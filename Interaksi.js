@@ -187,7 +187,8 @@ function handlePaginatedVmList(update, action, config, userData) {
 }
 
 /**
- * [REFACTOR FINAL v2.2] Mengadopsi alur pesan "tunggu->sukses" untuk ekspor.
+ * [REVISI DENGAN PERBAIKAN ANTREAN] Mengadopsi alur pesan "tunggu->sukses" untuk ekspor
+ * dan menggunakan fungsi pembantu cerdas untuk memastikan antrean berjalan.
  */
 function handleHistoryInteraction(update, action, config, userData) {
   const userEvent = update.callback_query;
@@ -215,10 +216,15 @@ function handleHistoryInteraction(update, action, config, userData) {
         config: config, 
         userData: userData, 
         chatId: chatId,
-        statusMessageId: statusMessageId // Sertakan ID pesan "tunggu"
+        statusMessageId: statusMessageId
       };
+      
       const jobKey = `job_${userEvent.from.id}_${Date.now()}`;
-      PropertiesService.getScriptProperties().setProperty(jobKey, JSON.stringify(jobData));
+      
+      // --- PERBAIKAN UTAMA DI SINI ---
+      // Menggunakan fungsi pembantu cerdas untuk menambahkan pekerjaan dan "membangunkan" antrean.
+      tambahTugasKeAntreanDanPicu(jobKey, jobData);
+      // --- AKHIR PERBAIKAN ---
 
       return;
     }
