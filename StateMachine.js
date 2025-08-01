@@ -314,9 +314,17 @@ function handleNoteTextInput(update, userState, config, userAccessMap) {
         return;
     }
 
-    if (!text || text.trim().length === 0 || text.length > 100) {
-        const reason = !text || text.trim().length === 0 ? "tidak boleh kosong" : "terlalu panjang (maks 100 karakter)";
-        const errorMessage = `❌ Catatan ${reason}. Silakan coba lagi.\n\nKirim "batal" untuk membatalkan.`;
+    // --- BLOK VALIDASI BARU DITAMBAHKAN DI SINI ---
+    if (!isValidInput(text)) {
+        const errorMessage = `❌ Input tidak valid. Catatan tidak boleh kosong atau diawali dengan karakter formula (=, +, -, @). Silakan coba lagi.\n\nKirim "batal" untuk membatalkan.`;
+        kirimPesanTelegram(errorMessage, config, "HTML", null, userEvent.chat.id);
+        setUserState(userId, userState); // Pertahankan state agar pengguna bisa mencoba lagi
+        return;
+    }
+    // --- AKHIR BLOK BARU ---
+
+    if (text.length > 100) { // Validasi panjang sekarang dipisahkan
+        const errorMessage = `❌ Catatan terlalu panjang (maks 100 karakter). Silakan coba lagi.\n\nKirim "batal" untuk membatalkan.`;
         kirimPesanTelegram(errorMessage, config, "HTML", null, userEvent.chat.id);
         setUserState(userId, userState);
         return;
@@ -365,22 +373,26 @@ function handleConfigTextInput(update, userState, config, userAccessMap) {
   let isValid = true;
   let errorMessage = "";
 
-  if (tipeDiharapkan === 'number' && isNaN(parseFloat(text))) {
+  // --- BLOK VALIDASI BARU DITAMBAHKAN DI SINI ---
+  // Terapkan validasi dasar untuk semua tipe kecuali JSON, yang memiliki aturan sendiri.
+  if (tipeDiharapkan !== 'json' && !isValidInput(text)) {
     isValid = false;
-    // Menggunakan format HTML
+    errorMessage = `❌ <b>Input Tidak Valid</b>\nNilai tidak boleh kosong atau diawali dengan karakter formula (=, +, -, @).`;
+  } 
+  // --- AKHIR BLOK BARU ---
+  else if (tipeDiharapkan === 'number' && isNaN(parseFloat(text))) {
+    isValid = false;
     errorMessage = `❌ <b>Input Tidak Valid</b>\nNilai untuk <code>${escapeHtml(key)}</code> harus berupa angka.`;
   } else if (tipeDiharapkan === 'json') {
     try {
       JSON.parse(text);
     } catch (e) {
       isValid = false;
-      // Menggunakan format HTML
       errorMessage = `❌ <b>Input Tidak Valid</b>\nNilai untuk <code>${escapeHtml(key)}</code> harus berupa format JSON yang benar.\n\n<i>Detail Error:</i> <pre>${escapeHtml(e.message)}</pre>`;
     }
   }
 
   if (!isValid) {
-    // Mengubah parse_mode menjadi "HTML"
     kirimPesanTelegram(errorMessage, config, "HTML", null, userEvent.chat.id);
     setUserState(userId, userState);
     return;

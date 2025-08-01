@@ -21,8 +21,8 @@ function dapatkanRekomendasiPenempatan(requirements, config) {
   try {
     const { headers: vmHeaders, dataRows: allVmData } = RepositoriData.getSemuaVm(config);
     const { headers: dsHeaders, dataRows: allDsData } = RepositoriData.getSemuaDatastore(config);
-    const allRules = bacaAturanPenempatan();
-    const clusterPolicies = bacaKebijakanCluster();
+    const allRules = RepositoriData.getAturanPenempatan();
+    const clusterPolicies = RepositoriData.getKebijakanCluster();
     const clusterLoadData = calculateClusterLoad(allVmData, vmHeaders, config);
 
     const applicableRule = findApplicableRule(requirements, allRules);

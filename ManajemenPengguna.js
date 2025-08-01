@@ -43,29 +43,11 @@ function handleUserApproval(sessionData, action, adminUserData, config) {
 }
 
 /**
- * [BARU v1.7.0] Menambahkan data pengguna baru ke sheet "Hak Akses".
- * @returns {boolean} True jika berhasil, false jika gagal (misal: duplikat).
+ * [REFAKTOR] Meneruskan permintaan tambah pengguna ke Repositori Data.
+ * @returns {boolean} True jika berhasil, false jika gagal.
  */
 function addUserToSheet(userId, firstName, email, role) {
-  try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(KONSTANTA.NAMA_SHEET.HAK_AKSES);
-    
-    // Cek duplikat
-    const data = sheet.getDataRange().getValues();
-    const idColumn = data[0].indexOf("User ID"); // Asumsi header adalah "User ID"
-    const existingIds = data.slice(1).map(row => String(row[idColumn]));
-    if (existingIds.includes(String(userId))) {
-      console.warn(`Upaya mendaftarkan User ID duplikat: ${userId}`);
-      return false;
-    }
-
-    // Tambahkan baris baru
-    sheet.appendRow([userId, firstName, email, role]);
-    return true;
-  } catch (e) {
-    console.error(`Gagal menambahkan pengguna ke sheet: ${e.message}`);
-    return false;
-  }
+  return RepositoriData.tambahPenggunaBaru(userId, firstName, email, role);
 }
 
 /**

@@ -190,7 +190,9 @@ function processDataChanges(config, sheetName, archiveFileName, primaryKeyHeader
       const pkNormalized = normalizePrimaryKey(pk);
       const rowData = buatObjekData(row);
       rowData[primaryKeyHeader] = pk;
-      mapDataHariIni.set(pkNormalized, { data: rowData, hash: computeVmHash(rowData) });
+      // Ekstrak hanya nama kolom dari objek 'columnsToTrack'
+      const trackedColumnNames = columnsToTrack.map(col => col.nama);
+      mapDataHariIni.set(pkNormalized, { data: rowData, hash: computeVmHash(rowData, trackedColumnNames) });
     }
   });
 

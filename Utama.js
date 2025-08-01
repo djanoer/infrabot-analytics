@@ -722,7 +722,7 @@ function _handleRequest(e) {
       const userMentionText = firstName ? escapeHtml(firstName) : "Anda";
 
       let message = `❌ Maaf ${userMentionText}, Anda tidak memiliki hak akses untuk fitur ini.\n\n`;
-      message += `Silakan hubungi administrator atau gunakan perintah:\n<code>/daftar email.anda@domain.com</code>`;
+      message += `Jika Anda seharusnya memiliki akses, silakan hubungi administrator atau gunakan perintah:\n<code>${KONSTANTA.PERINTAH_BOT.DAFTAR} email.anda@domain.com</code>`;
 
       kirimPesanTelegram(message, config, "HTML", null, userEvent.message.chat.id);
       answerCallbackQuery(callbackQueryId, config);
@@ -883,9 +883,9 @@ function _handleRequest(e) {
       const userMentionText = firstName
         ? `<a href="tg://user?id=${userEvent.from.id}">${escapeHtml(firstName)}</a>`
         : "Anda";
-
+      
       let message = `❌ Maaf ${userMentionText}, Anda tidak memiliki hak akses untuk menggunakan bot ini.\n\n`;
-      message += `Jika Anda seharusnya memiliki akses, silakan hubungi administrator atau gunakan perintah:\n<code>/daftar email.anda@domain.com</code>`;
+      message += `Jika Anda seharusnya memiliki akses, silakan hubungi administrator atau gunakan perintah:\n<code>${KONSTANTA.PERINTAH_BOT.DAFTAR} email.anda@domain.com</code>`;
 
       kirimPesanTelegram(message, config, "HTML");
       return;

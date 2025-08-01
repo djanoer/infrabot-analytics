@@ -497,14 +497,14 @@ const CONFIG_CATEGORIES = {
 };
 
 /**
- * [REVISI FINAL DENGAN TOMBOL BATAL] State machine untuk alur kerja manajemen konfigurasi.
+ * [REVISI FINAL DENGAN TOMBOL BATAL & CLEAR STATE] State machine untuk alur kerja manajemen konfigurasi.
  * Mengambil chatId dari lokasi yang benar dan menyertakan opsi untuk menutup menu.
+ * Memperbaiki bug di mana state tidak dihapus saat pembatalan.
  */
 function handleConfigManager(update, action, config, userData) {
   const isInitialCall = action === "start";
   const userEvent = isInitialCall ? update.message : update.callback_query;
   
-  // Mengambil chatId dan messageId dari lokasi yang benar untuk kedua konteks
   const chatId = userEvent.message ? userEvent.message.chat.id : userEvent.chat.id;
   const statusMessageId = userEvent.message ? userEvent.message.message_id : (isInitialCall ? null : userEvent.message.id);
   
@@ -568,7 +568,8 @@ function handleConfigManager(update, action, config, userData) {
       setUserState(userId, { action: "AWAITING_CONFIG_INPUT", key: key, category: category, originalMessageId: statusMessageId });
       editMessageText(pesan, keyboard, chatId, statusMessageId, config);
     } else if (action === "cancel_view") {
-      // Logika baru untuk menangani tombol Batal / Tutup
+      // --- PERBAIKAN DITERAPKAN DI SINI ---
+      clearUserState(userId); // Hapus state pengguna dari cache
       callTelegramApi("deleteMessage", { chat_id: chatId, message_id: statusMessageId }, config);
     }
   } catch (e) {

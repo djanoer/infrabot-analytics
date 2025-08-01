@@ -380,7 +380,7 @@ function generateClusterAnalysis(clusterName, vmsInCluster, vmHeaders, config) {
   });
 
   // Analisis Cerdas vs Kebijakan Overcommit
-  const clusterPolicies = bacaKebijakanCluster();
+  const clusterPolicies = RepositoriData.getKebijakanCluster();
   const policy = clusterPolicies.get(clusterName);
   if (policy) {
     analysis.policy = policy;

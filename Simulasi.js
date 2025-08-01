@@ -102,7 +102,7 @@ function jalankanSimulasiMigrasi(sourceHost, config) {
     }
 
     // Ambil kebijakan cluster untuk analisis
-    const clusterPolicies = bacaKebijakanCluster();
+    const clusterPolicies = RepositoriData.getKebijakanCluster();
 
     const K = KONSTANTA.KUNCI_KONFIG;
     const hostIndex = headers.indexOf(config[K.HEADER_VM_HOSTS]);
@@ -201,7 +201,7 @@ function jalankanSimulasiMigrasi(sourceHost, config) {
       });
 
       if (policy) {
-        message += `\n<i>* Analisis berdasarkan kebijakan overcommit cluster: CPU ${policy.cpuovercommitratio}:1, Memori ${policy.memoryovercommitratio}:1. Beban hanya dihitung dari VM yang berstatus 'poweredOn'.</i>`;
+        message += `\n<i>* Analisis berdasarkan kebijakan overcommit cluster: CPU ${policy.cpuovercommitratio}:1, Memori ${policy.memoryovercommitratio}:1. Beban hanya dihitung dari VM yang berstatus <b>powered On</b>.</i>`;
       }
     }
 

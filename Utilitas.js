@@ -23,20 +23,41 @@ function escapeHtml(text) {
 }
 
 /**
- * [PERBAIKAN FINAL] Membuat "sidik jari" (hash) dari sebuah objek data VM.
- * Fungsi ini sekarang tidak lagi memiliki aturan hardcoded untuk mengabaikan 'Uptime'.
- * Perilakunya sekarang 100% dikontrol oleh daftar KOLOM_YANG_DIPANTAU.
+ * [BARU - FASE 2] Memvalidasi input teks untuk mencegah karakter awal yang berbahaya.
+ * Mencegah potensi formula injection di Google Sheets.
+ * @param {string} text - Teks input dari pengguna.
+ * @returns {boolean} True jika input dianggap aman, false jika sebaliknya.
  */
-function computeVmHash(vmObject) {
-  if (!vmObject) return "";
-  const objectForHashing = { ...vmObject };
-  const sortedKeys = Object.keys(objectForHashing).sort();
+function isValidInput(text) {
+  if (typeof text !== 'string' || text.trim() === '') {
+    return false; // Menolak input non-string atau yang hanya berisi spasi.
+  }
+  // Regex untuk memeriksa apakah string dimulai dengan karakter =, +, -, atau @.
+  const dangerousStartChars = /^[=+\-@]/;
+  return !dangerousStartChars.test(text);
+}
+
+/**
+ * [REFAKTOR - FASE 3] Membuat "sidik jari" (hash) dari sebuah objek data VM
+ * hanya berdasarkan kolom yang ditentukan untuk dilacak.
+ * @param {object} vmObject - Objek yang berisi data satu baris VM.
+ * @param {Array<string>} columnsToTrack - Array berisi nama-nama kolom yang akan dimasukkan dalam hash.
+ * @returns {string} Hash MD5 dari data yang relevan.
+ */
+function computeVmHash(vmObject, columnsToTrack) {
+  if (!vmObject || !columnsToTrack || columnsToTrack.length === 0) return "";
+
+  // Urutkan nama kolom untuk memastikan konsistensi hash
+  const sortedKeys = [...columnsToTrack].sort();
+
   const dataString = sortedKeys
     .map((key) => {
-      const value = objectForHashing[key];
+      const value = vmObject[key];
+      // Normalisasi nilai: #N/A dan null/undefined dianggap string kosong
       return String(value || "").trim() === "#N/A" ? "" : value;
     })
     .join("||");
+
   const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, dataString);
   return digest.map((byte) => (byte + 0x100).toString(16).substring(1)).join("");
 }

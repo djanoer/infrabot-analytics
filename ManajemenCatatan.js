@@ -4,107 +4,30 @@
  * @date 2023-08-01
  *
  * @description
- * Mengelola semua operasi Create, Read, Update, Delete (CRUD) untuk catatan VM.
- * Juga berisi "Mesin Keadaan" (noteMachine) untuk menangani alur interaktif
- * penambahan dan penghapusan catatan dari Telegram.
+ * Bertindak sebagai lapisan logika bisnis (business logic layer) untuk catatan VM.
+ * Meneruskan permintaan dari State Machine ke Repositori Data.
  */
 
 /**
- * [PINDAH] Mengambil satu catatan spesifik untuk sebuah VM.
+ * [REFAKTOR] Mengambil satu catatan spesifik untuk sebuah VM dari cache atau repositori.
  */
 function getVmNote(vmPrimaryKey, config) {
-  const sheetName = KONSTANTA.NAMA_SHEET.CATATAN_VM;
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(sheetName);
-
-  if (!sheet || sheet.getLastRow() <= 1) {
-    return null; 
-  }
-
-  const data = sheet.getDataRange().getValues();
-  const headers = data.shift();
-  const pkIndex = headers.indexOf("VM Primary Key");
-  if (pkIndex === -1) {
-    console.error("Struktur sheet Catatan VM tidak valid: Header 'VM Primary Key' tidak ditemukan.");
-    return null;
-  }
-
-  const noteRow = data.find((row) => row[pkIndex] === vmPrimaryKey);
-
-  if (noteRow) {
-    const noteData = {};
-    headers.forEach((header, index) => {
-      noteData[header] = noteRow[index];
-    });
-    return noteData;
-  }
-
-  return null;
+  // Di masa depan, kita bisa menambahkan lapisan cache di sini.
+  // Untuk sekarang, kita ambil semua dan cari.
+  const allNotes = RepositoriData.getSemuaCatatan();
+  return allNotes.get(vmPrimaryKey) || null;
 }
 
 /**
- * [PINDAH] Menyimpan (Create) atau memperbarui (Update) catatan untuk sebuah VM.
+ * [REFAKTOR] Meneruskan permintaan simpan/update ke Repositori Data.
  */
 function saveOrUpdateVmNote(vmPrimaryKey, noteText, userData) {
-  const sheetName = KONSTANTA.NAMA_SHEET.CATATAN_VM;
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(sheetName);
-  if (!sheet) return false;
-
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const pkIndex = headers.indexOf("VM Primary Key");
-
-  let rowIndexToUpdate = -1;
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][pkIndex] === vmPrimaryKey) {
-      rowIndexToUpdate = i + 1;
-      break;
-    }
-  }
-
-  const timestamp = new Date();
-  const userName = userData.firstName || "Pengguna";
-  const sanitizedNoteText = "'" + noteText; // Mencegah formula injection
-
-  try {
-    if (rowIndexToUpdate > -1) {
-      sheet.getRange(rowIndexToUpdate, pkIndex + 2, 1, 3).setValues([[sanitizedNoteText, timestamp, userName]]);
-    } else {
-      sheet.appendRow([vmPrimaryKey, sanitizedNoteText, timestamp, userName]);
-    }
-    return true;
-  } catch (e) {
-    console.error(`Gagal menyimpan catatan untuk VM ${vmPrimaryKey}. Error: ${e.message}`);
-    return false;
-  }
+  return RepositoriData.simpanAtauPerbaruiCatatan(vmPrimaryKey, noteText, userData);
 }
 
 /**
- * [PINDAH] Menghapus (hard delete) catatan untuk sebuah VM.
+ * [REFAKTOR] Meneruskan permintaan hapus ke Repositori Data.
  */
 function deleteVmNote(vmPrimaryKey) {
-  const sheetName = KONSTANTA.NAMA_SHEET.CATATAN_VM;
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(sheetName);
-
-  if (!sheet || sheet.getLastRow() <= 1) return false;
-
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const pkIndex = headers.indexOf("VM Primary Key");
-
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][pkIndex] === vmPrimaryKey) {
-      const rowIndexToDelete = i + 1;
-      try {
-        sheet.deleteRow(rowIndexToDelete);
-        return true;
-      } catch (e) {
-        console.error(`Gagal menghapus baris ${rowIndexToDelete}. Error: ${e.message}`);
-        return false;
-      }
-    }
-  }
-  return false;
+  return RepositoriData.hapusCatatan(vmPrimaryKey);
 }

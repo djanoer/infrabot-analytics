@@ -47,6 +47,7 @@ function jalankanSemuaTes() {
 
   // Jalankan setiap suite tes
   tesFungsiUtilitas();
+  tesFungsiValidasi();
   tesFungsiParsing();
   tesFungsiAnalisis();
   tesFungsiPenyimpanan();
@@ -70,6 +71,26 @@ function tesFungsiUtilitas() {
   assertEquals("VM-ABC", normalizePrimaryKey("VM-ABC-VC10"), "normalizePrimaryKey: Hapus sufiks -VC10");
   assertEquals("VM-TANPA-SUFIKS", normalizePrimaryKey("VM-TANPA-SUFIKS"), "normalizePrimaryKey: Tanpa perubahan");
   assertEquals("", normalizePrimaryKey(null), "normalizePrimaryKey: Input null harus mengembalikan string kosong");
+}
+
+/**
+ * [BARU - FASE 2] Suite tes untuk fungsi validasi keamanan di Utilitas.js.
+ */
+function tesFungsiValidasi() {
+  console.log("\n--- Menguji File: Utilitas.js (Fungsi Keamanan) ---");
+
+  // Tes Positif (Input yang seharusnya diterima)
+  assertEquals(true, isValidInput("VM ini perlu di-patch besok."), "isValidInput: Teks normal harus valid.");
+  assertEquals(true, isValidInput("Catatan: CPU load tinggi pada jam 10."), "isValidInput: Teks dengan angka dan titik dua harus valid.");
+  
+  // Tes Negatif (Input yang harus ditolak)
+  assertEquals(false, isValidInput("=SUM(A1:B2)"), "isValidInput: Input dimulai dengan '=' harus ditolak.");
+  assertEquals(false, isValidInput("+C1+C2"), "isValidInput: Input dimulai dengan '+' harus ditolak.");
+  assertEquals(false, isValidInput("-D1-D2"), "isValidInput: Input dimulai dengan '-' harus ditolak.");
+  assertEquals(false, isValidInput("@E1"), "isValidInput: Input dimulai dengan '@' harus ditolak.");
+  assertEquals(false, isValidInput(""), "isValidInput: String kosong harus ditolak.");
+  assertEquals(false, isValidInput("   "), "isValidInput: String berisi spasi saja harus ditolak.");
+  assertEquals(false, isValidInput(null), "isValidInput: Input null harus ditolak.");
 }
 
 /**
