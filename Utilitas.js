@@ -590,39 +590,6 @@ function cekCacheLaporanKesehatan() {
 }
 
 /**
- * [REVISI FINAL] Menambahkan pekerjaan ke antrean dan secara proaktif memicu prosesor.
- * Fungsi ini akan menghapus trigger "penjaga" yang berjalan jarang untuk
- * memastikan trigger instan yang dibuatnya yang akan berjalan.
- * @param {string} jobKey - Kunci unik untuk pekerjaan (misal: `job_export_12345`).
- * @param {object} jobData - Objek data pekerjaan yang akan di-serialisasi.
- */
-function tambahTugasKeAntreanDanPicu(jobKey, jobData) {
-  const properties = PropertiesService.getScriptProperties();
-  
-  // 1. Simpan pekerjaan baru ke dalam antrean
-  properties.setProperty(jobKey, JSON.stringify(jobData));
-  
-  // 2. Periksa apakah sudah ada trigger yang terjadwal untuk prosesor antrean
-  const allTriggers = ScriptApp.getProjectTriggers();
-  const isProcessorScheduled = allTriggers.some(trigger => trigger.getHandlerFunction() === 'prosesAntreanTugas');
-  
-  // 3. Jika tidak ada trigger yang terjadwal (artinya prosesor sedang "tidur"),
-  //    maka bangunkan dengan membuat trigger instan.
-  if (!isProcessorScheduled) {
-    console.log("Prosesor antrean sedang tidur. Membangunkan...");
-    
-    // Hapus trigger penjaga yang mungkin ada untuk mencegah konflik
-    _hapusTriggerYangAda('prosesAntreanTugas');
-
-    // Buat trigger baru yang akan berjalan dalam 10 detik
-    ScriptApp.newTrigger('prosesAntreanTugas')
-      .timeBased()
-      .after(10 * 1000) // Jalankan dalam 10 detik
-      .create();
-  }
-}
-
-/**
  * [FUNGSI DIAGNOSTIK] Menampilkan isi antrean tugas saat ini di log.
  */
 function lihatAntreanTugas() {
@@ -637,5 +604,36 @@ function lihatAntreanTugas() {
     jobKeys.forEach(key => {
       console.log(`Kunci: ${key}`);
     });
+  }
+}
+
+/**
+ * [REVISI FINAL & ANDAL] Menambahkan pekerjaan ke antrean dan secara proaktif
+ * memicu prosesor HANYA JIKA antrean sebelumnya kosong.
+ * @param {string} jobKey - Kunci unik untuk pekerjaan.
+ * @param {object} jobData - Objek data pekerjaan.
+ */
+function tambahTugasKeAntreanDanPicu(jobKey, jobData) {
+  const properties = PropertiesService.getScriptProperties();
+  
+  // 1. Periksa kondisi antrean SEBELUM menambahkan pekerjaan baru
+  const jobKeysBefore = properties.getKeys().filter(key => key.startsWith("job_"));
+  
+  // 2. Simpan pekerjaan baru ke dalam antrean
+  properties.setProperty(jobKey, JSON.stringify(jobData));
+  
+  // 3. Jika antrean SEBELUMNYA kosong, maka kita tahu prosesor sedang tidur
+  //    dan perlu dibangunkan sekarang juga.
+  if (jobKeysBefore.length === 0) {
+    console.log("Antrean sebelumnya kosong. Membangunkan prosesor secara instan...");
+    
+    // Hapus trigger penjaga yang mungkin ada untuk mencegah konflik waktu.
+    _hapusTriggerYangAda('prosesAntreanTugas');
+    
+    // Buat trigger instan yang baru untuk berjalan dalam 10 detik.
+    ScriptApp.newTrigger('prosesAntreanTugas')
+      .timeBased()
+      .after(10 * 1000)
+      .create();
   }
 }

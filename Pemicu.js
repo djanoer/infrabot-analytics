@@ -22,18 +22,12 @@
  * baru di `PropertiesService`.
  */
 
-/**
- * [REFACTORED V.1.2] Menjalankan semua pekerjaan harian dengan mendelegasikannya
- * ke sistem antrean untuk memastikan eksekusi yang andal dan asinkron.
- */
 function runDailyJobs() {
   console.log("Memulai pendelegasian pekerjaan harian via trigger...");
   const { config } = getBotState();
 
-  // 1. Buat tiket pekerjaan (job) untuk sinkronisasi dan laporan harian
   const targetChatId = config.ENVIRONMENT === "DEV" ? config.TELEGRAM_CHAT_ID_DEV : config.TELEGRAM_CHAT_ID;
 
-  // 2. Buat tiket pekerjaan dengan Chat ID yang sudah benar dan SERTAKAN KONFIGURASI.
   const jobData = {
     jobType: "sync_and_report",
     chatId: targetChatId,
@@ -43,16 +37,16 @@ function runDailyJobs() {
     stage: 1,
   };
 
-  // 3. Tambahkan pekerjaan ke antrean
   const jobKey = `job_daily_sync_${Date.now()}`;
-  PropertiesService.getScriptProperties().setProperty(jobKey, JSON.stringify(jobData));
+  // --- PERBAIKAN DI SINI ---
+  tambahTugasKeAntreanDanPicu(jobKey, jobData);
+  // --- AKHIR PERBAIKAN ---
 
   console.log(`Pekerjaan sinkronisasi harian '${jobKey}' berhasil ditambahkan ke antrean.`);
 
   try {
     const { pesan, keyboard } = jalankanPemeriksaanAmbangBatas(config);
     if (keyboard) {
-      // Hanya kirim jika ada peringatan
       kirimPesanTelegram(pesan, config, "HTML", keyboard, targetChatId);
     }
   } catch (e) {
@@ -130,37 +124,3 @@ function runCacheWarming() {
     console.error(`Pekerjaan 'Cache Warming' gagal: ${e.message}`);
   }
 }
-
-/**
- * [BARU] Pemicu waktu yang HANYA memulai rantai pekerjaan kalkulasi Health Score.
- * Fungsi ini sangat ringan dan cepat.
- */
-/**
-function picuKalkulasiHealthScore() {
-  console.log("Memicu pekerjaan berantai untuk kalkulasi Health Score...");
-  try {
-    // Hapus pekerjaan lama yang mungkin macet untuk mencegah duplikasi
-    //const properties = PropertiesService.getScriptProperties();
-    const allKeys = properties.getKeys();
-    allKeys.forEach((key) => {
-      if (key.startsWith("job_health_score_")) {
-        properties.deleteProperty(key);
-      }
-    });
-
-    // Buat tiket pekerjaan untuk tahap pertama
-    const jobData = {
-      jobType: "health_score_calculation",
-      stage: "gather_data", // Memulai dari tahap pengumpulan data
-      context: {},
-    };
-
-    const jobKey = `job_health_score_${Date.now()}`;
-    //properties.setProperty(jobKey, JSON.stringify(jobData));
-    tambahTugasKeAntreanDanPicu(jobKey, jobData);
-    console.log(`Pekerjaan Health Score '${jobKey}' berhasil ditambahkan ke antrean.`);
-  } catch (e) {
-    console.error(`Gagal memicu pekerjaan Health Score: ${e.message}`);
-  }
-}
-*/

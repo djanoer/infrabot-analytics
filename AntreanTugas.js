@@ -24,32 +24,31 @@
  */
 
 /**
- * [REVISI FINAL DENGAN LOCKSERVICE] Memproses tugas dari antrean secara andal.
- * Menggunakan LockService untuk mencegah tumpang tindih eksekusi dan memastikan
- * hanya satu prosesor yang aktif pada satu waktu. Didesain untuk trigger 1 menit.
+ * [REVISI FINAL] Memproses tugas dari antrean secara dinamis dengan self-triggering.
+ * Fungsi ini menghapus trigger yang menjalankannya, lalu membuat yang baru jika perlu.
  */
 function prosesAntreanTugas() {
   const lock = LockService.getScriptLock();
-  // Coba kunci selama 10 detik. Jika gagal, berarti ada proses lain yang berjalan.
   if (!lock.tryLock(10000)) {
     console.warn("Eksekusi prosesAntreanTugas dilewati karena proses sebelumnya masih aktif.");
     return;
   }
 
+  // Hapus semua trigger untuk fungsi ini. Ini memastikan hanya rantai yang aktif
+  // yang akan menjadwalkan eksekusi berikutnya.
+  _hapusTriggerYangAda('prosesAntreanTugas');
+
   try {
     const startTime = new Date();
-    // Batas waktu kerja aman, sedikit di bawah batas Google
-    const timeLimit = 5 * 60 * 1000 + 30 * 1000; // 5 menit 30 detik
+    const timeLimit = 5 * 60 * 1000; // Batas waktu kerja 5 menit
     const properties = PropertiesService.getScriptProperties();
 
-    // Loop akan terus berjalan selama masih ada waktu DAN masih ada pekerjaan
     while (new Date() - startTime < timeLimit) {
-      const allKeys = properties.getKeys();
-      const jobKeys = allKeys.filter((key) => key.startsWith("job_"));
+      const jobKeys = properties.getKeys().filter((key) => key.startsWith("job_"));
 
       if (jobKeys.length === 0) {
         console.log("Antrean kosong. Proses dihentikan.");
-        return; // Tidak ada pekerjaan lagi, keluar dari fungsi
+        return;
       }
 
       const currentJobKey = jobKeys[0];
@@ -60,39 +59,63 @@ function prosesAntreanTugas() {
         try {
           const jobData = JSON.parse(jobDataString);
           console.log(`Memproses pekerjaan: ${currentJobKey} (Tipe: ${jobData.jobType}, Tahap: ${jobData.stage})`);
-          
-          // Logika perutean untuk berbagai jenis pekerjaan
+
+          // Logika perutean switch...case...
           switch (jobData.jobType) {
-            case "sync_and_report":
-              executeSyncAndReportJob(jobData);
-              break;
-            case "export_menu":
-              executeMenuExportJob(jobData);
-              break;
-            case "export":
-              executeExportJob(jobData);
-              break;
-            case "simulation":
-              executeSimulationJob(jobData);
-              break;
-            case "health_score_calculation":
-              executeHealthScoreJob(jobData);
-              break;
-            default:
-              console.warn(`Jenis pekerjaan tidak dikenal: ${jobData.jobType}`);
+            case "sync_and_report": executeSyncAndReportJob(jobData); break;
+            case "export_menu": executeMenuExportJob(jobData); break;
+            case "export": executeExportJob(jobData); break;
+            case "simulation": executeSimulationJob(jobData); break;
+            case "health_score_calculation": executeHealthScoreJob(jobData); break;
+            default: console.warn(`Jenis pekerjaan tidak dikenal: ${jobData.jobType}`);
           }
         } catch (e) {
+          // --- BLOK DEAD LETTER QUEUE (DLQ) ---
           console.error(`Gagal memproses pekerjaan ${currentJobKey}. Error: ${e.message}. Memindahkan ke DLQ.`);
           const failedJobKey = `failed_${currentJobKey}`;
           properties.setProperty(failedJobKey, jobDataString);
-          // (kode notifikasi DLQ Anda akan berjalan di sini)
+
+          // --- KODE NOTIFIKASI LENGKAP ---
+          try {
+            const config = getBotState().config;
+            const errorMessage = `🔴 <b>Peringatan Sistem: Pekerjaan Gagal</b> 🔴\n\n` +
+                               `Sebuah pekerjaan di latar belakang gagal dieksekusi dan telah dipindahkan ke *Dead Letter Queue*.\n\n` +
+                               `<b>Kunci Pekerjaan:</b>\n<code>${failedJobKey}</code>\n\n` +
+                               `<b>Penyebab Kegagalan:</b>\n<pre>${escapeHtml(e.message)}</pre>\n\n` +
+                               `Mohon periksa *PropertiesService* di proyek Apps Script untuk diagnosis lebih lanjut.`;
+            
+            kirimPesanTelegram(errorMessage, config, "HTML");
+          } catch (notificationError) {
+            console.error(`GAGAL MENGIRIM NOTIFIKASI DLQ: ${notificationError.message}`);
+          }
         }
       }
     }
-    console.log("Batas waktu kerja tercapai. Eksekusi akan dilanjutkan oleh trigger berikutnya.");
   } finally {
-    // Pastikan kunci selalu dilepaskan, bahkan jika terjadi error
+    const remainingJobs = PropertiesService.getScriptProperties().getKeys().filter(key => key.startsWith("job_"));
+    if (remainingJobs.length > 0) {
+      console.log(`Masih ada ${remainingJobs.length} pekerjaan. Menjadwalkan eksekusi berikutnya dalam 1 menit.`);
+      ScriptApp.newTrigger('prosesAntreanTugas')
+        .timeBased()
+        .after(1 * 60 * 1000)
+        .create();
+    } else {
+      console.log("Semua pekerjaan selesai. Rantai trigger dihentikan.");
+    }
     lock.releaseLock();
+  }
+}
+
+/**
+ * [HELPER] Menghapus semua trigger yang ada untuk sebuah fungsi.
+ * @param {string} functionName - Nama fungsi yang trigger-nya akan dihapus.
+ */
+function _hapusTriggerYangAda(functionName) {
+  const allTriggers = ScriptApp.getProjectTriggers();
+  for (const trigger of allTriggers) {
+    if (trigger.getHandlerFunction() === functionName) {
+      ScriptApp.deleteTrigger(trigger);
+    }
   }
 }
 

@@ -10,7 +10,7 @@
  */
 
 /**
- * [FINAL v4.0.0] Menjalankan pemeriksaan dan menghasilkan laporan hibrida cerdas.
+ * - Menjalankan pemeriksaan dan menghasilkan laporan hibrida cerdas.
  * - Selalu menampilkan detail peringatan datastore.
  * - Meringkas peringatan VM jika jumlahnya banyak.
  * - Menyediakan tombol ekspor opsional untuk detail VM.
@@ -42,8 +42,8 @@ function jalankanPemeriksaanAmbangBatas(config) {
 
     // 2. Mulai menyusun pesan laporan
     let finalMessage = formatReportHeader("Laporan Kondisi Sistem");
-    finalMessage += `\nTeridentifikasi total <b>${semuaPeringatan.length}</b> item yang memerlukan tinjauan.\n`;
-
+    
+    // --- PERBAIKAN DI SINI: Hapus baris duplikat ---
     finalMessage += `\nTeridentifikasi total <b>${semuaPeringatan.length}</b> item yang memerlukan tinjauan.\n`;
 
     // 3. Bagian Peringatan Datastore (Selalu ditampilkan secara detail)

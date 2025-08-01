@@ -450,7 +450,8 @@ function kondisiMachine(update, action, config, userData) {
 }
 
 /**
- * [REVISI] State machine untuk menangani interaksi dari menu kesehatan.
+ * [REVISI FINAL] State machine untuk menangani interaksi dari menu kesehatan,
+ * termasuk memulai proses kalkulasi di latar belakang.
  */
 function healthMachine(update, action, config, userData) {
   const userEvent = update.callback_query;
@@ -467,8 +468,7 @@ function healthMachine(update, action, config, userData) {
     try {
       answerCallbackQuery(userEvent.id, config);
 
-      // --- PERBAIKAN UTAMA: Langsung buat pekerjaan di sini ---
-      // Hapus pekerjaan lama yang mungkin macet untuk mencegah duplikasi
+      // Menghapus pekerjaan lama yang mungkin macet untuk mencegah duplikasi
       const properties = PropertiesService.getScriptProperties();
       const allKeys = properties.getKeys();
       allKeys.forEach(key => {
@@ -477,7 +477,7 @@ function healthMachine(update, action, config, userData) {
         }
       });
 
-      // Buat tiket pekerjaan untuk tahap pertama
+      // Membuat tiket pekerjaan untuk tahap pertama
       const jobData = {
         jobType: "health_score_calculation",
         stage: "gather_data",
@@ -485,12 +485,11 @@ function healthMachine(update, action, config, userData) {
       };
       const jobKey = `job_health_score_${Date.now()}`;
       
-      // Gunakan fungsi pembantu yang sudah cerdas
+      // Menggunakan fungsi pembantu cerdas untuk menambahkan pekerjaan dan "membangunkan" antrean
       tambahTugasKeAntreanDanPicu(jobKey, jobData);
-      // --- AKHIR PERBAIKAN ---
       
       if(sessionData.requesterId){
-          CacheService.getScriptCache().put('health_report_requester', sessionData.requesterId, 3600);
+          CacheService.getScriptCache().put('health_report_requester', sessionData.requesterId, 3600); // Simpan selama 1 jam
       }
 
       editMessageText("✅ Baik, proses kalkulasi telah dimulai di latar belakang. Anda akan menerima notifikasi jika laporan sudah siap.", null, chatId, messageId, config);
@@ -500,3 +499,4 @@ function healthMachine(update, action, config, userData) {
     }
   }
 }
+

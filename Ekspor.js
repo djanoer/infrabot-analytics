@@ -170,6 +170,10 @@ function processUptimeExport(exportType, config) {
   return { headers: headers, data: filteredData, title: dynamicTitle };
 }
 
+/**
+ * [REVISI] Mengelola permintaan ekspor dari menu interaktif.
+ * Sekarang menggunakan fungsi pembantu cerdas untuk menambahkan pekerjaan ke antrean.
+ */
 function exportMachine(update, config, userData) {
   const callbackQuery = update.callback_query;
   const sessionData = callbackQuery.sessionData;
@@ -179,10 +183,8 @@ function exportMachine(update, config, userData) {
   let statusMessageId = null;
 
   try {
-    // Beri notifikasi singkat bahwa tombol sudah ditekan
     answerCallbackQuery(callbackQuery.id, config, `Memproses permintaan...`);
 
-    // Gunakan helper baru untuk mendapatkan judul yang profesional
     const friendlyTitle = _getFriendlyExportTitle(exportType);
     const waitMessage = `⏳ Harap tunggu, sedang memproses permintaan ekspor Anda untuk "<b>${friendlyTitle}</b>"...`;
 
@@ -191,18 +193,22 @@ function exportMachine(update, config, userData) {
       statusMessageId = sentMessage.result.message_id;
     }
 
-    // Buat tiket tugas dan sertakan ID pesan "tunggu"
     const jobData = {
       jobType: "export_menu",
       context: { exportType: exportType },
       config: config,
       userData: userData,
       chatId: chatId,
-      statusMessageId: statusMessageId, // Sertakan ID pesan di sini
+      statusMessageId: statusMessageId,
     };
 
     const jobKey = `job_${callbackQuery.from.id}_${Date.now()}`;
-    PropertiesService.getScriptProperties().setProperty(jobKey, JSON.stringify(jobData));
+    
+    // --- PERBAIKAN UTAMA DI SINI ---
+    // Ganti panggilan langsung ke PropertiesService dengan fungsi pembantu yang cerdas.
+    tambahTugasKeAntreanDanPicu(jobKey, jobData);
+    // --- AKHIR PERBAIKAN ---
+
   } catch (e) {
     handleCentralizedError(e, `Permintaan Ekspor (Gagal Antre) (${exportType})`, config, userData);
     if (statusMessageId) {

@@ -50,7 +50,8 @@ const commandHandlers = {
 
     // 1. Kirim pesan status awal
     const timestamp = new Date().toLocaleString("id-ID", { hour: "2-digit", minute: "2-digit" });
-    let pesanAwal = `<b>Permintaan diterima pada pukul ${timestamp} (dari Perintah /syncdata)</b>\n\n⏳ Sinkronisasi penuh & pembuatan laporan telah ditambahkan ke antrean...`;
+    const commandName = KONSTANTA.PERINTAH_BOT.SYNC_LAPORAN;
+    let pesanAwal = `<b>Permintaan diterima pada pukul ${timestamp} (dari Perintah <code>${commandName}</code>)</b>\n\n⏳ Sinkronisasi penuh & pembuatan laporan telah ditambahkan ke antrean...`;
     const sentMessage = kirimPesanTelegram(pesanAwal, config, "HTML", null, chatId);
     let statusMessageId = null;
     if (sentMessage && sentMessage.ok) {
@@ -103,7 +104,6 @@ const commandHandlers = {
     }
   },
   [KONSTANTA.PERINTAH_BOT.CEK_TIKET]: (update, config, userDataAuth) => {
-    // --- PERBAIKAN DIMULAI DI SINI ---
     // 1. Ambil ID chat yang benar dari pesan masuk
     const chatId = update.message.chat.id;
     let statusMessageId = null;
@@ -129,7 +129,6 @@ const commandHandlers = {
         editMessageText("❌ Gagal membuat laporan tiket.", null, chatId, statusMessageId, config);
       }
     }
-    // --- AKHIR PERBAIKAN ---
   },
   [KONSTANTA.PERINTAH_BOT.MIGRASI_CHECK]: (update, config, userDataAuth) => {
     const userId = String(update.message.from.id);
@@ -365,7 +364,6 @@ const commandHandlers = {
         statusMessageId = sentMessage.result.message_id;
       }
 
-      // --- PERBAIKAN DITERAPKAN DI SINI ---
       // Mengganti panggilan ke getVmData() dengan RepositoriData.getSemuaVm()
       const { headers, dataRows } = RepositoriData.getSemuaVm(config);
 
@@ -382,50 +380,54 @@ const commandHandlers = {
   [KONSTANTA.PERINTAH_BOT.INFO]: (update, config, userDataAuth) => {
     kirimPesanInfo(update, config, userDataAuth);
   },
-  [KONSTANTA.PERINTAH_BOT.SIMULASI]: (update, config) => {
+  [KONSTANTA.PERINTAH_BOT.SIMULASI]: (update, config, userDataAuth) => {
     const args = update.message.text.split(" ");
     const subCommand = (args[1] || "").toLowerCase();
     const parameter = args.slice(2).join(" ");
+    const chatId = update.message.chat.id;
 
+    // Validasi input untuk memastikan formatnya benar
     if (!subCommand || !parameter || (subCommand !== "cleanup" && subCommand !== "migrasi")) {
-      kirimPesanTelegram(
-        "Format perintah tidak valid. Gunakan:\n" +
-          "<code>/simulasi cleanup [nama_cluster]</code>\n" +
-          "<code>/simulasi migrasi [nama_host_sumber]</code>",
-        config,
-        "HTML"
-      );
+      const K = KONSTANTA.PERINTAH_BOT;
+      const errorMessage = "Format perintah tidak valid. Gunakan:\n" +
+                         `<code>${K.SIMULASI} cleanup [nama_cluster]</code>\n` +
+                         `<code>${K.SIMULASI} migrasi [nama_host_sumber]</code>`;
+      kirimPesanTelegram(errorMessage, config, "HTML", null, chatId);
       return;
     }
 
     try {
-      // --- PERBAIKAN DI SINI ---
-      // Membuat "tiket tugas" dengan format standar
+      // Membuat "tiket tugas" dengan format standar dan data yang relevan
       const jobData = {
-        jobType: "simulation", // Tipe pekerjaan yang akan dikenali oleh antrean utama
+        jobType: "simulation", // Tipe pekerjaan yang akan dikenali oleh prosesor antrean
         context: {
           subCommand: subCommand,
           parameter: parameter,
         },
         config: config,
-        chatId: update.message.chat.id,
-        userData: { firstName: update.message.from.first_name, userId: update.message.from.id },
+        chatId: chatId,
+        // Sertakan informasi pengguna yang meminta untuk tujuan logging atau notifikasi
+        userData: { 
+          firstName: update.message.from.first_name, 
+          userId: String(update.message.from.id) 
+        },
       };
 
-      // Simpan tugas dengan awalan 'job_' standar
+      // Membuat kunci pekerjaan yang unik
       const jobKey = `job_simulation_${Date.now()}`;
-      //PropertiesService.getScriptProperties().setProperty(jobKey, JSON.stringify(jobData));
+      
+      // Menggunakan fungsi pembantu cerdas untuk menambahkan pekerjaan dan "membangunkan" antrean
       tambahTugasKeAntreanDanPicu(jobKey, jobData);
-      // --- AKHIR PERBAIKAN ---
 
-      kirimPesanTelegram(
-        `✅ Permintaan simulasi <b>${subCommand}</b> diterima.\n\n` +
-          "Proses kalkulasi berjalan di antrean utama. Anda akan menerima hasilnya sesaat lagi.",
-        config,
-        "HTML"
-      );
+      // Mengirim pesan konfirmasi yang jelas kepada pengguna
+      const confirmationMessage = `✅ Permintaan simulasi <b>${escapeHtml(subCommand)}</b> diterima.\n\n` +
+                                "Proses kalkulasi berjalan di antrean utama. Anda akan menerima hasilnya sesaat lagi.";
+      kirimPesanTelegram(confirmationMessage, config, "HTML", null, chatId);
+
     } catch (e) {
-      handleCentralizedError(e, `Perintah /simulasi (Membuat Tugas)`, config);
+      // Konteks error sekarang dinamis sesuai dengan sub-perintah yang dijalankan
+      const commandContext = `Perintah /simulasi ${subCommand} (Membuat Tugas)`;
+      handleCentralizedError(e, commandContext, config, userDataAuth);
     }
   },
   [KONSTANTA.PERINTAH_BOT.GRAFIK]: (update, config, userDataAuth) => {
@@ -458,7 +460,6 @@ const commandHandlers = {
 
       const photoSent = kirimFotoTelegram(chartBlob, caption, config, chatId);
 
-      // --- PERBAIKAN UTAMA DI SINI ---
       // Hapus pesan "tunggu" setelah foto berhasil terkirim
       if (photoSent && photoSent.ok) {
         if (statusMessageId) {
