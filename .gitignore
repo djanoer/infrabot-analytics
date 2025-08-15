@@ -1,0 +1,10 @@
+# Google Apps Script project settings and secrets
+.clasp.json
+.clasp.dev.json
+.clasp.prod.json
+
+# File yang mungkin berisi token atau data sensitif lainnya
+Telegram.js
+
+# File swap dari editor (contoh: Vim)
+*.swp
