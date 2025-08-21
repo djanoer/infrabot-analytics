@@ -355,3 +355,45 @@ function debugMesinProvisi() {
     Logger.log("🏁 SESI DEBUGGING DIHENTIKAN KARENA ERROR.");
   }
 }
+
+/**
+ * [BARU] Suite tes untuk fungsi-fungsi inti di dalam mesin rekomendasi.
+ */
+function tesFungsiRekomendasi() {
+  console.log("\n--- Menguji File: Rekomendasi.js ---");
+
+  // --- Skenario 1: Pengujian Logika Pemilihan Aturan (Rule Finding) ---
+  const mockRules = [
+    { kritikalitas: "Default", ioprofile: "*", vcentertarget: "VC01_DEFAULT" },
+    { kritikalitas: "Critical", ioprofile: "High", vcentertarget: "VC02_CRITICAL" },
+    { namaaplikasi: ["BRImo", "QLola"], vcentertarget: "VC02_VIP_APPS" },
+  ];
+
+  // Tes 1: Harus memilih aturan spesifik aplikasi (Prioritas 1)
+  let requirements = { namaAplikasi: "BRImo" };
+  let a_rule = findApplicableRule(requirements, mockRules);
+  assertEquals(
+    "VC02_VIP_APPS",
+    a_rule.vcentertarget,
+    "findApplicableRule: Harus memprioritaskan aturan Nama Aplikasi."
+  );
+
+  // Tes 2: Harus memilih aturan kritikalitas (Prioritas 2)
+  requirements = { kritikalitas: "Critical", io: "High" };
+  a_rule = findApplicableRule(requirements, mockRules);
+  assertEquals(
+    "VC02_CRITICAL",
+    a_rule.vcentertarget,
+    "findApplicableRule: Harus memilih aturan Kritikalitas jika nama aplikasi tidak cocok."
+  );
+
+  // Tes 3: Harus memilih aturan default (Jaring Pengaman)
+  requirements = { kritikalitas: "Low" };
+  a_rule = findApplicableRule(requirements, mockRules);
+  assertEquals(
+    "VC01_DEFAULT",
+    a_rule.vcentertarget,
+    "findApplicableRule: Harus memilih aturan Default jika tidak ada yang cocok."
+  );
+  console.log("     -> ✅ LULUS: Logika pemilihan aturan dua lapis bekerja dengan benar.");
+}

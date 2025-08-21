@@ -36,7 +36,7 @@ function prosesAntreanTugas() {
 
   // Hapus semua trigger untuk fungsi ini. Ini memastikan hanya rantai yang aktif
   // yang akan menjadwalkan eksekusi berikutnya.
-  _hapusTriggerYangAda('prosesAntreanTugas');
+  _hapusTriggerYangAda("prosesAntreanTugas");
 
   try {
     const startTime = new Date();
@@ -62,12 +62,23 @@ function prosesAntreanTugas() {
 
           // Logika perutean untuk mengeksekusi jenis pekerjaan yang berbeda
           switch (jobData.jobType) {
-            case "sync_and_report": executeSyncAndReportJob(jobData); break;
-            case "export_menu": executeMenuExportJob(jobData); break;
-            case "export": executeExportJob(jobData); break;
-            case "simulation": executeSimulationJob(jobData); break;
-            case "health_score_calculation": executeHealthScoreJob(jobData); break;
-            default: console.warn(`Jenis pekerjaan tidak dikenal: ${jobData.jobType}`);
+            case "sync_and_report":
+              executeSyncAndReportJob(jobData);
+              break;
+            case "export_menu":
+              executeMenuExportJob(jobData);
+              break;
+            case "export":
+              executeExportJob(jobData);
+              break;
+            case "simulation":
+              executeSimulationJob(jobData);
+              break;
+            case "health_score_calculation":
+              executeHealthScoreJob(jobData);
+              break;
+            default:
+              console.warn(`Jenis pekerjaan tidak dikenal: ${jobData.jobType}`);
           }
         } catch (e) {
           // Blok Dead Letter Queue (DLQ) untuk menangani pekerjaan yang gagal
@@ -77,13 +88,14 @@ function prosesAntreanTugas() {
 
           try {
             const config = getBotState().config;
-            const errorMessage = `🔴 <b>Peringatan Sistem: Pekerjaan Gagal</b> 🔴\n\n` +
-                               `Sebuah pekerjaan di latar belakang gagal dieksekusi dan telah dipindahkan ke *Dead Letter Queue*.\n\n` +
-                               `<b>Kunci Pekerjaan:</b>\n<code>${failedJobKey}</code>\n\n` +
-                               `<b>Penyebab Kegagalan:</b>\n<pre>${escapeHtml(e.message)}</pre>\n\n` +
-                               `<b>Stack Trace:</b>\n<pre>${escapeHtml(e.stack || 'Tidak tersedia')}</pre>\n\n` +
-                               `Mohon periksa *PropertiesService* di proyek Apps Script untuk diagnosis lebih lanjut.`;
-            
+            const errorMessage =
+              `🔴 <b>Peringatan Sistem: Pekerjaan Gagal</b> 🔴\n\n` +
+              `Sebuah pekerjaan di latar belakang gagal dieksekusi dan telah dipindahkan ke *Dead Letter Queue*.\n\n` +
+              `<b>Kunci Pekerjaan:</b>\n<code>${failedJobKey}</code>\n\n` +
+              `<b>Penyebab Kegagalan:</b>\n<pre>${escapeHtml(e.message)}</pre>\n\n` +
+              `<b>Stack Trace:</b>\n<pre>${escapeHtml(e.stack || "Tidak tersedia")}</pre>\n\n` +
+              `Mohon periksa *PropertiesService* di proyek Apps Script untuk diagnosis lebih lanjut.`;
+
             kirimPesanTelegram(errorMessage, config, "HTML");
           } catch (notificationError) {
             console.error(`GAGAL MENGIRIM NOTIFIKASI DLQ: ${notificationError.message}`);
@@ -94,11 +106,13 @@ function prosesAntreanTugas() {
   } finally {
     // === LOGIKA PERBAIKAN KRUSIAL: Rantai Pemicu Otomatis ===
     // Setelah selesai bekerja, periksa apakah masih ada pekerjaan tersisa.
-    const remainingJobs = PropertiesService.getScriptProperties().getKeys().filter(key => key.startsWith("job_"));
+    const remainingJobs = PropertiesService.getScriptProperties()
+      .getKeys()
+      .filter((key) => key.startsWith("job_"));
     if (remainingJobs.length > 0) {
       // Jika ya, buat pemicu baru untuk menjalankan fungsi ini lagi nanti guna melanjutkan pekerjaan.
       console.log(`Masih ada ${remainingJobs.length} pekerjaan. Menjadwalkan eksekusi berikutnya dalam 1 menit.`);
-      ScriptApp.newTrigger('prosesAntreanTugas')
+      ScriptApp.newTrigger("prosesAntreanTugas")
         .timeBased()
         .after(1 * 60 * 1000) // Atur jeda 1 menit sebelum siklus berikutnya
         .create();
@@ -137,7 +151,7 @@ function executeHealthScoreJob(jobData) {
   const config = getBotState().config;
 
   try {
-    if (stage === 'gather_data') {
+    if (stage === "gather_data") {
       console.log("Health Score - Tahap 1: Mengumpulkan semua data...");
       const { headers, dataRows: allVms } = RepositoriData.getSemuaVm(config);
       const ninetyDaysAgo = new Date();
@@ -160,18 +174,22 @@ function executeHealthScoreJob(jobData) {
       const { headers: ticketHeaders, dataRows: allTickets } = RepositoriData.getSemuaTiket(config);
       const ticketVmNameIndex = ticketHeaders.indexOf(config.HEADER_TIKET_NAMA_VM);
       const ticketMap = new Map();
-      const statusSelesai = (config[KONSTANTA.KUNCI_KONFIG.STATUS_TIKET_SELESAI] || []).map(s => s.toLowerCase());
+      const statusSelesai = (config[KONSTANTA.KUNCI_KONFIG.STATUS_TIKET_SELESAI] || []).map((s) => s.toLowerCase());
       const statusTiketIndex = ticketHeaders.indexOf(config[KONSTANTA.KUNCI_KONFIG.HEADER_TIKET_STATUS]);
 
       if (ticketVmNameIndex !== -1 && statusTiketIndex !== -1) {
         for (const ticketRow of allTickets) {
-          const ticketStatus = String(ticketRow[statusTiketIndex] || '').toLowerCase().trim();
+          const ticketStatus = String(ticketRow[statusTiketIndex] || "")
+            .toLowerCase()
+            .trim();
           // Hanya proses tiket yang tidak berstatus selesai
           if (ticketStatus && !statusSelesai.includes(ticketStatus)) {
             const vmName = ticketRow[ticketVmNameIndex];
             if (vmName) {
               if (!ticketMap.has(vmName)) ticketMap.set(vmName, []);
-              ticketMap.get(vmName).push({ /* data tiket sederhana */ });
+              ticketMap.get(vmName).push({
+                /* data tiket sederhana */
+              });
             }
           }
         }
@@ -179,82 +197,87 @@ function executeHealthScoreJob(jobData) {
       // --- AKHIR BLOK BARU ---
 
       // Simpan semua data mentah yang mahal untuk diproses ke cache
-      saveLargeDataToCache('health_score_raw_vms', {headers, allVms}, 1800);
-      saveLargeDataToCache('health_score_raw_history', Array.from(historyMap.entries()), 1800);
-      saveLargeDataToCache('health_score_raw_tickets', Array.from(ticketMap.entries()), 1800); // <-- Simpan data tiket
+      saveLargeDataToCache("health_score_raw_vms", { headers, allVms }, 1800);
+      saveLargeDataToCache("health_score_raw_history", Array.from(historyMap.entries()), 1800);
+      saveLargeDataToCache("health_score_raw_tickets", Array.from(ticketMap.entries()), 1800); // <-- Simpan data tiket
 
       // Jadwalkan tahap berikutnya
-      const nextJobData = { ...jobData, stage: 'process_batch', context: { batchIndex: 0, allScores: [] } };
+      const nextJobData = { ...jobData, stage: "process_batch", context: { batchIndex: 0, allScores: [] } };
       tambahTugasKeAntreanDanPicu(`job_health_score_${Date.now()}`, nextJobData);
       console.log("Health Score - Tahap 1 Selesai. Menjadwalkan Tahap 2.");
-    
-    } else if (stage === 'process_batch') {
+    } else if (stage === "process_batch") {
       const batchIndex = context.batchIndex || 0;
       console.log(`Health Score - Tahap 2: Memproses batch #${batchIndex}`);
-      
-      const rawVmsData = readLargeDataFromCache('health_score_raw_vms');
-      const rawHistoryData = readLargeDataFromCache('health_score_raw_history');
-      const rawTicketData = readLargeDataFromCache('health_score_raw_tickets'); // <-- Baca data tiket
-      
-      if (!rawVmsData || !rawHistoryData || !rawTicketData) throw new Error("Cache data mentah tidak ditemukan. Proses dibatalkan.");
+
+      const rawVmsData = readLargeDataFromCache("health_score_raw_vms");
+      const rawHistoryData = readLargeDataFromCache("health_score_raw_history");
+      const rawTicketData = readLargeDataFromCache("health_score_raw_tickets"); // <-- Baca data tiket
+
+      if (!rawVmsData || !rawHistoryData || !rawTicketData)
+        throw new Error("Cache data mentah tidak ditemukan. Proses dibatalkan.");
 
       const { headers, allVms } = rawVmsData;
       const historyMap = new Map(rawHistoryData);
       const ticketMap = new Map(rawTicketData); // <-- Buat Map tiket
-      
+
       const pkIndex = headers.indexOf(config.HEADER_VM_PK);
       const vmNameIndex = headers.indexOf(config.HEADER_VM_NAME);
-      
+
       const startIndex = batchIndex * BATCH_SIZE;
       const endIndex = startIndex + BATCH_SIZE;
       const vmBatch = allVms.slice(startIndex, endIndex);
 
       if (vmBatch.length === 0) {
-        const finalJobData = { ...jobData, stage: 'finalize', context: { allScores: context.allScores } };
+        const finalJobData = { ...jobData, stage: "finalize", context: { allScores: context.allScores } };
         tambahTugasKeAntreanDanPicu(`job_health_score_${Date.now()}`, finalJobData);
         console.log("Health Score - Semua batch selesai. Menjadwalkan Tahap Final.");
         return;
       }
 
-      const batchScores = vmBatch.map(vmRow => {
+      const batchScores = vmBatch.map((vmRow) => {
         const pk = normalizePrimaryKey(vmRow[pkIndex]);
         const vmName = vmRow[vmNameIndex];
         const vmHistory = historyMap.get(pk) || [];
         const vmTickets = ticketMap.get(vmName) || []; // <-- Ambil tiket dari Map (sangat cepat)
-        
+
         const health = calculateVmHealthScore(vmRow, headers, config, vmHistory, vmTickets);
-        return { name: vmName, score: health.score, reasons: health.reasons.join(', ') };
+        return { name: vmName, score: health.score, reasons: health.reasons.join(", ") };
       });
 
       const updatedScores = context.allScores.concat(batchScores);
 
-      const nextJobData = { ...jobData, stage: 'process_batch', context: { batchIndex: batchIndex + 1, allScores: updatedScores } };
+      const nextJobData = {
+        ...jobData,
+        stage: "process_batch",
+        context: { batchIndex: batchIndex + 1, allScores: updatedScores },
+      };
       tambahTugasKeAntreanDanPicu(`job_health_score_${Date.now()}`, nextJobData);
-    
-    } else if (stage === 'finalize') {
+    } else if (stage === "finalize") {
       console.log("Health Score - Tahap Final: Menyelesaikan laporan...");
       let allScores = context.allScores;
-      allScores = allScores.filter(vm => vm.score > 0);
+      allScores = allScores.filter((vm) => vm.score > 0);
       allScores.sort((a, b) => b.score - a.score);
       const top10 = allScores.slice(0, 10);
-      
-      cache.put('health_report_cache', JSON.stringify(top10), 21600);
-      
-      const requesterId = cache.get('health_report_requester');
+
+      cache.put("health_report_cache", JSON.stringify(top10), 21600);
+
+      const requesterId = cache.get("health_report_requester");
       if (requesterId) {
         const notifMessage = `✅ Laporan Kesehatan VM yang Anda minta sekarang sudah siap.\n\nSilakan jalankan kembali perintah <code>${KONSTANTA.PERINTAH_BOT.HEALTH_REPORT} vm</code> untuk melihatnya.`;
         try {
           kirimPesanTelegram(notifMessage, config, "HTML", null, requesterId);
-          cache.remove('health_report_requester');
+          cache.remove("health_report_requester");
         } catch (notifError) {
-          console.error(`Gagal mengirim notifikasi penyelesaian Health Score ke user ID ${requesterId}: ${notifError.message}`);
+          console.error(
+            `Gagal mengirim notifikasi penyelesaian Health Score ke user ID ${requesterId}: ${notifError.message}`
+          );
         }
       }
-      
+
       // Hapus semua cache data mentah
-      removeLargeDataFromCache('health_score_raw_vms');
-      removeLargeDataFromCache('health_score_raw_history');
-      removeLargeDataFromCache('health_score_raw_tickets'); // <-- Hapus cache tiket
+      removeLargeDataFromCache("health_score_raw_vms");
+      removeLargeDataFromCache("health_score_raw_history");
+      removeLargeDataFromCache("health_score_raw_tickets"); // <-- Hapus cache tiket
       console.log("Health Score - Proses Selesai. Laporan final disimpan ke cache.");
     }
   } catch (e) {
@@ -341,7 +364,7 @@ function executeMenuExportJob(jobData) {
 
       case KONSTANTA.TIPE_INTERNAL.EKSPOR_PERINGATAN_VM: {
         const { headers: vmHeaders, dataRows: vmData } = RepositoriData.getSemuaVm(config);
-        
+
         // Jalankan kembali logika pemeriksaan untuk mengumpulkan data peringatan
         const uptimeAlerts = cekUptimeVmKritis(config, vmHeaders, vmData);
         const vmMatiAlerts = cekVmKritisMati(config, vmHeaders, vmData);
@@ -349,13 +372,13 @@ function executeMenuExportJob(jobData) {
 
         // Ubah format data agar sesuai untuk ekspor ke sheet
         headers = ["Tipe Peringatan", "Nama VM", "Detail", "Kritikalitas"];
-        data = semuaPeringatan.map(alert => [
+        data = semuaPeringatan.map((alert) => [
           alert.tipe,
           alert.item,
           alert.detailRaw, // Gunakan detail mentah untuk data yang bersih
-          alert.kritikalitas
+          alert.kritikalitas,
         ]);
-        
+
         title = "Laporan Detail Peringatan VM";
         highlightColumn = "Tipe Peringatan";
         break;
@@ -414,17 +437,19 @@ function executeSimulationJob(jobData) {
 }
 
 /**
- * [REVISI DENGAN STAGING] Bertindak sebagai state machine untuk alur sinkronisasi.
- * Menjalankan satu tahap, lalu menjadwalkan tahap berikutnya.
+ * [REVISI DENGAN STAGING & KONFIRMASI AKHIR] Bertindak sebagai state machine untuk alur sinkronisasi.
+ * Menjalankan satu tahap, lalu menjadwalkan tahap berikutnya, dan mengedit pesan awal setelah selesai.
  */
 function executeSyncAndReportJob(jobData) {
-  const { config, chatId, userData } = jobData;
+  // Ambil semua data yang dibutuhkan dari jobData
+  const { config, chatId, userData, statusMessageId } = jobData;
   const stage = jobData.stage || 1; // Mulai dari tahap 1 jika belum ada
 
   try {
     console.log(`Menjalankan pekerjaan sync_and_report, Tahap: ${stage}`);
 
     switch (stage) {
+      // (case 1 sampai 4 tetap sama persis)
       case 1: // Salin Data VM
         salinDataSheet(config[KONSTANTA.KUNCI_KONFIG.SHEET_VM], config[KONSTANTA.KUNCI_KONFIG.ID_SUMBER]);
         _lanjutkanKeTahapBerikutnya(jobData, 2);
@@ -459,15 +484,32 @@ function executeSyncAndReportJob(jobData) {
         _lanjutkanKeTahapBerikutnya(jobData, 5);
         break;
 
-      case 5: // Buat dan Kirim Laporan
+      // --- PERBAIKAN ALUR AKHIR DI SINI ---
+      case 5: // Buat, Kirim Laporan, dan Edit Pesan Awal
         const pesanLaporan = buatLaporanHarianVM(config);
+        // 1. Kirim laporan sebagai pesan baru
         kirimPesanTelegram(pesanLaporan, config, "HTML", null, chatId);
+
+        // 2. Edit pesan "tunggu" yang asli menjadi pesan sukses, jika ID-nya ada
+        if (statusMessageId) {
+          const pesanKonfirmasi = `✅ <b>Sinkronisasi Berhasil</b>\n\nLaporan lengkap telah dikirim sebagai pesan baru.`;
+          try {
+            editMessageText(pesanKonfirmasi, null, chatId, statusMessageId, config);
+          } catch (editError) {
+            // Abaikan jika gagal mengedit (misal, pesan sudah dihapus oleh pengguna)
+            console.warn(`Gagal mengedit pesan konfirmasi (ID: ${statusMessageId}): ${editError.message}`);
+          }
+        }
         console.log("Alur sinkronisasi multi-tahap selesai.");
         break;
     }
   } catch (e) {
     handleCentralizedError(e, `executeSyncAndReportJob (Tahap ${stage})`, config, userData);
-    // Hentikan rantai jika ada error
+    // Jika ada error di tengah jalan, edit pesan "tunggu" menjadi pesan error
+    if (statusMessageId) {
+      const pesanError = `❌ <b>Sinkronisasi Gagal</b>\n\nTerjadi kesalahan pada tahap ${stage}.\n<i>Penyebab: ${e.message}</i>`;
+      editMessageText(pesanError, null, chatId, statusMessageId, config);
+    }
   }
 }
 

@@ -47,7 +47,7 @@ function bacaKonfigurasi() {
       K.KOLOM_PANTAU_DS,
       K.DS_KECUALI,
       K.STATUS_TIKET_AKTIF,
-      "KATA_KUNCI_DS_DIUTAMAKAN",
+      K.KATA_KUNCI_DS_DIUTAMAKAN,
       K.KRITIKALITAS_PANTAU,
       K.STATUS_TIKET_SELESAI,
     ];
@@ -59,6 +59,8 @@ function bacaKonfigurasi() {
       K.MAP_KAPASITAS_STORAGE,
       K.SYSTEM_LIMITS,
       K.STORAGE_UTILIZATION_THRESHOLDS,
+      K.AMBANG_BATAS_SKOR_KELAYAKAN,
+      K.AMBANG_BATAS_KEPADATAN_VM,
     ];
 
     data.forEach((row) => {

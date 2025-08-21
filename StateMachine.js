@@ -239,6 +239,18 @@ function handleConfigTextInput(update, userState, config, userAccessMap) {
   let errorMessage = "";
 
   // --- BLOK VALIDASI BARU DITAMBAHKAN DI SINI ---
+  if (key === KONSTANTA.KUNCI_KONFIG.STRATEGI_PENEMPATAN_OPTIMAL) {
+    const allowedStrategies = ["BALANCE", "DENSITY_FIRST", "FILL_UP"];
+    if (!allowedStrategies.includes(text.toUpperCase())) {
+      isValid = false;
+      errorMessage = `❌ <b>Input Tidak Valid</b>\nNilai untuk <code>${escapeHtml(
+        key
+      )}</code> harus salah satu dari:\n- <code>BALANCE</code>\n- <code>DENSITY_FIRST</code>\n- <code>FILL_UP</code>`;
+    }
+  }
+  // --- AKHIR BLOK BARU ---
+
+  // --- BLOK VALIDASI BARU DITAMBAHKAN DI SINI ---
   // Terapkan validasi dasar untuk semua tipe kecuali JSON, yang memiliki aturan sendiri.
   if (tipeDiharapkan !== "json" && !isValidInput(text)) {
     isValid = false;
@@ -407,10 +419,6 @@ function healthMachine(update, action, config, userData) {
   }
 }
 
-// =================================================================================
-// BAGIAN BARU: LOGIKA UNTUK ALUR REKOMENDASI /PROVISION
-// =================================================================================
-
 /**
  * [FINAL] Memulai alur percakapan rekomendasi dengan menanyakan jalur spesifik atau umum.
  */
@@ -497,10 +505,12 @@ function tampilkanPilihanAplikasi(userId, messageId, chatId, config) {
  * [REVISI] Menampilkan pilihan kritikalitas untuk jalur umum.
  */
 function tampilkanPilihanKritikalitas(userId, messageId, chatId, config) {
+  // --- PERUBAHAN DI SINI ---
   const kritikalitasOptions = [
     ["Critical", "Very High", "High"],
     ["Medium", "Low", "Others"],
   ];
+  // --- AKHIR PERUBAHAN ---
 
   const keyboardRows = kritikalitasOptions.map((row) =>
     row.map((opt) => ({
@@ -531,7 +541,7 @@ function tampilkanPilihanKritikalitas(userId, messageId, chatId, config) {
 }
 
 /**
- * Menampilkan pertanyaan profil I/O.
+ * [BARU] Menampilkan pertanyaan profil I/O.
  */
 function tampilkanPertanyaanIo(userId, messageId, chatId, config, requirements) {
   const ioOptions = ["High", "Normal"];
@@ -558,7 +568,7 @@ function tampilkanPertanyaanIo(userId, messageId, chatId, config, requirements) 
   const pesan = `✅ Kritikalitas: <b>${escapeHtml(
     requirements.kritikalitas
   )}</b>\n\n<b>Langkah 3 dari 4:</b> Sekarang, pilih profil I/O:`;
-  editMessageText(pesan, { inline_keyboard: [keyboardRows[0], keyboardRows[1]] }, chatId, messageId, config);
+  editMessageText(pesan, { inline_keyboard: keyboardRows }, chatId, messageId, config);
 
   setUserState(userId, {
     action: "AWAITING_REKOMENDASI_INPUT",
@@ -570,7 +580,7 @@ function tampilkanPertanyaanIo(userId, messageId, chatId, config, requirements) 
 }
 
 /**
- * Menampilkan pertanyaan spesifikasi akhir.
+ * [BARU] Menampilkan pertanyaan spesifikasi akhir.
  */
 function tampilkanPertanyaanSpek(userId, messageId, chatId, config, requirements) {
   const backStep = requirements.namaAplikasi ? "pilih_aplikasi" : "io";
@@ -611,7 +621,7 @@ function tampilkanPertanyaanSpek(userId, messageId, chatId, config, requirements
 }
 
 /**
- * [FINAL] State machine utama untuk alur rekomendasi, kini menangani alur dua lapis.
+ * [REVISI TOTAL] State machine utama untuk alur rekomendasi.
  */
 function rekomendasiMachine(update, action, config) {
   const userEvent = update.callback_query;
@@ -651,7 +661,7 @@ function rekomendasiMachine(update, action, config) {
 }
 
 /**
- * Handler untuk input teks, khusus untuk menangani input spesifikasi.
+ * [BARU] Handler untuk input teks, khusus untuk menangani input spesifikasi.
  */
 function handleRekomendasiTextInput(update, userState, config) {
   const userEvent = update.message;
@@ -670,7 +680,7 @@ function handleRekomendasiTextInput(update, userState, config) {
     if (specs.length !== 3 || isNaN(parseInt(specs[0])) || isNaN(parseInt(specs[1])) || isNaN(parseInt(specs[2]))) {
       const errorMessage = "Format spesifikasi tidak valid. Harap masukkan lagi dalam format: `CPU RAM DISK`.";
       kirimPesanTelegram(errorMessage, config, "HTML", null, chatId);
-      setUserState(userId, userState);
+      setUserState(userId, userState); // Pertahankan state agar pengguna bisa mencoba lagi
     } else {
       requirements.cpu = parseInt(specs[0], 10);
       requirements.memory = parseInt(specs[1], 10);
@@ -678,10 +688,12 @@ function handleRekomendasiTextInput(update, userState, config) {
 
       clearUserState(userId);
 
+      // Hapus pesan permintaan spek & kirim pesan "tunggu"
       callTelegramApi("deleteMessage", { chat_id: chatId, message_id: messageId }, config);
       const waitMessage = kirimPesanTelegram("⏳ Menganalisis rekomendasi terbaik...", config, "HTML", null, chatId);
 
       const resultMessage = dapatkanRekomendasiPenempatan(requirements, config);
+      // Edit pesan "tunggu" dengan hasil akhir
       editMessageText(resultMessage, null, chatId, waitMessage.result.message_id, config);
     }
   }

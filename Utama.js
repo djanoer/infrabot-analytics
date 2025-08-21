@@ -47,30 +47,41 @@ const commandHandlers = {
   },
   [KONSTANTA.PERINTAH_BOT.SYNC_LAPORAN]: (update, config, userDataAuth) => {
     const chatId = update.message.chat.id;
+    let statusMessageId = null; // Variabel untuk menyimpan ID pesan
 
-    // 1. Kirim pesan status awal
-    const timestamp = new Date().toLocaleString("id-ID", { hour: "2-digit", minute: "2-digit" });
-    const commandName = KONSTANTA.PERINTAH_BOT.SYNC_LAPORAN;
-    let pesanAwal = `<b>Permintaan diterima pada pukul ${timestamp} (dari Perintah <code>${commandName}</code>)</b>\n\n⏳ Sinkronisasi penuh & pembuatan laporan telah ditambahkan ke antrean...`;
-    const sentMessage = kirimPesanTelegram(pesanAwal, config, "HTML", null, chatId);
-    let statusMessageId = null;
-    if (sentMessage && sentMessage.ok) {
-      statusMessageId = sentMessage.result.message_id;
+    try {
+      // 1. Kirim pesan status awal
+      const timestamp = new Date().toLocaleString("id-ID", { hour: "2-digit", minute: "2-digit" });
+      const commandName = KONSTANTA.PERINTAH_BOT.SYNC_LAPORAN;
+      let pesanAwal = `<b>Permintaan diterima pada pukul ${timestamp} (dari Perintah <code>${commandName}</code>)</b>\n\n⏳ Sinkronisasi penuh & pembuatan laporan telah ditambahkan ke antrean...`;
+
+      // Kirim pesan dan simpan hasilnya untuk mendapatkan message_id
+      const sentMessage = kirimPesanTelegram(pesanAwal, config, "HTML", null, chatId);
+      if (sentMessage && sentMessage.ok) {
+        statusMessageId = sentMessage.result.message_id; // Simpan ID pesan "tunggu"
+      }
+
+      // 2. Buat tiket pekerjaan (job)
+      const jobData = {
+        jobType: "sync_and_report",
+        config: config,
+        chatId: chatId,
+        userData: userDataAuth,
+        statusMessageId: statusMessageId, // Sertakan ID pesan di dalam data pekerjaan
+      };
+
+      // 3. Tambahkan pekerjaan ke antrean
+      const jobKey = `job_manual_sync_${Date.now()}`;
+      tambahTugasKeAntreanDanPicu(jobKey, jobData);
+
+      // 4. Fungsi utama selesai di sini, bot tetap responsif.
+    } catch (e) {
+      handleCentralizedError(e, `Perintah: /sync (Gagal Antre)`, config, userDataAuth);
+      // Jika gagal saat antre, edit pesan "tunggu" menjadi pesan error
+      if (statusMessageId) {
+        editMessageText("❌ Gagal menambahkan tugas ke antrean.", null, chatId, statusMessageId, config);
+      }
     }
-
-    // 2. Buat tiket pekerjaan (job)
-    const jobData = {
-      jobType: "sync_and_report",
-      config: config,
-      chatId: chatId,
-      statusMessageId: statusMessageId,
-      userData: userDataAuth, // Sertakan info pengguna
-    };
-
-    // 3. Tambahkan pekerjaan ke antrean
-    const jobKey = `job_manual_sync_${Date.now()}`;
-    //PropertiesService.getScriptProperties().setProperty(jobKey, JSON.stringify(jobData));
-    tambahTugasKeAntreanDanPicu(jobKey, jobData);
   },
   [KONSTANTA.PERINTAH_BOT.PROVISIONING]: (update, config, userDataAuth) => {
     const chatId = update.message.chat.id;
@@ -389,9 +400,10 @@ const commandHandlers = {
     // Validasi input untuk memastikan formatnya benar
     if (!subCommand || !parameter || (subCommand !== "cleanup" && subCommand !== "migrasi")) {
       const K = KONSTANTA.PERINTAH_BOT;
-      const errorMessage = "Format perintah tidak valid. Gunakan:\n" +
-                         `<code>${K.SIMULASI} cleanup [nama_cluster]</code>\n` +
-                         `<code>${K.SIMULASI} migrasi [nama_host_sumber]</code>`;
+      const errorMessage =
+        "Format perintah tidak valid. Gunakan:\n" +
+        `<code>${K.SIMULASI} cleanup [nama_cluster]</code>\n` +
+        `<code>${K.SIMULASI} migrasi [nama_host_sumber]</code>`;
       kirimPesanTelegram(errorMessage, config, "HTML", null, chatId);
       return;
     }
@@ -407,23 +419,23 @@ const commandHandlers = {
         config: config,
         chatId: chatId,
         // Sertakan informasi pengguna yang meminta untuk tujuan logging atau notifikasi
-        userData: { 
-          firstName: update.message.from.first_name, 
-          userId: String(update.message.from.id) 
+        userData: {
+          firstName: update.message.from.first_name,
+          userId: String(update.message.from.id),
         },
       };
 
       // Membuat kunci pekerjaan yang unik
       const jobKey = `job_simulation_${Date.now()}`;
-      
+
       // Menggunakan fungsi pembantu cerdas untuk menambahkan pekerjaan dan "membangunkan" antrean
       tambahTugasKeAntreanDanPicu(jobKey, jobData);
 
       // Mengirim pesan konfirmasi yang jelas kepada pengguna
-      const confirmationMessage = `✅ Permintaan simulasi <b>${escapeHtml(subCommand)}</b> diterima.\n\n` +
-                                "Proses kalkulasi berjalan di antrean utama. Anda akan menerima hasilnya sesaat lagi.";
+      const confirmationMessage =
+        `✅ Permintaan simulasi <b>${escapeHtml(subCommand)}</b> diterima.\n\n` +
+        "Proses kalkulasi berjalan di antrean utama. Anda akan menerima hasilnya sesaat lagi.";
       kirimPesanTelegram(confirmationMessage, config, "HTML", null, chatId);
-
     } catch (e) {
       // Konteks error sekarang dinamis sesuai dengan sub-perintah yang dijalankan
       const commandContext = `Perintah /simulasi ${subCommand} (Membuat Tugas)`;
@@ -567,8 +579,8 @@ const commandHandlers = {
 
     try {
       // Skenario 1: Pengguna meminta laporan skor kesehatan VM (/health vm)
-      if (subCommand === 'vm') {
-        const cachedReport = CacheService.getScriptCache().get('health_report_cache');
+      if (subCommand === "vm") {
+        const cachedReport = CacheService.getScriptCache().get("health_report_cache");
 
         if (cachedReport) {
           // Jika cache ada, langsung tampilkan laporan
@@ -588,22 +600,38 @@ const commandHandlers = {
           kirimPesanTelegram(reportMessage, config, "HTML", null, chatId);
         } else {
           // Jika cache kosong, tawarkan untuk memulai kalkulasi
-          const message = "ℹ️ Laporan skor kesehatan VM sedang tidak tersedia.\n\nApakah Anda ingin memulai proses kalkulasi sekarang? (Mungkin memerlukan beberapa menit)";
+          const message =
+            "ℹ️ Laporan skor kesehatan VM sedang tidak tersedia.\n\nApakah Anda ingin memulai proses kalkulasi sekarang? (Mungkin memerlukan beberapa menit)";
           const keyboard = {
-            inline_keyboard: [[{
-              text: "✅ Ya, Mulai Kalkulasi Sekarang",
-              callback_data: CallbackHelper.build("health_machine", "trigger_calc", {requesterId: userId}, config)
-            },
-            {
-              text: "❌ Batal",
-              callback_data: CallbackHelper.build("health_machine", "cancel", {}, config)
-            }]]
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Ya, Mulai Kalkulasi Sekarang",
+                  callback_data: CallbackHelper.build(
+                    "health_machine",
+                    "trigger_calc",
+                    { requesterId: userId },
+                    config
+                  ),
+                },
+                {
+                  text: "❌ Batal",
+                  callback_data: CallbackHelper.build("health_machine", "cancel", {}, config),
+                },
+              ],
+            ],
           };
           kirimPesanTelegram(message, config, "HTML", keyboard, chatId);
         }
       } else {
         // Skenario 2: Perintah default (/health), menjalankan Laporan Kondisi Umum
-        const sentMessage = kirimPesanTelegram("🔬 Memulai pemeriksaan kondisi sistem...", config, "HTML", null, chatId);
+        const sentMessage = kirimPesanTelegram(
+          "🔬 Memulai pemeriksaan kondisi sistem...",
+          config,
+          "HTML",
+          null,
+          chatId
+        );
         if (sentMessage && sentMessage.ok) {
           statusMessageId = sentMessage.result.message_id;
         }
@@ -626,31 +654,40 @@ const commandHandlers = {
   },
 };
 
+// djanoer/infrabot-analytics/infrabot-analytics-c2ee3769cab1b649c1c5aa43c9e5759fc9c4e2bc/Utama.js
+
 /**
- * [VERSI PRODUKSI FINAL] Catch super tangguh dengan pembacaan property yang aman.
+ * [VERSI PRODUKSI FINAL - SUPER ROBUST] Catch-all super tangguh dengan pembacaan properti yang aman.
+ * Mampu menangani kegagalan bahkan saat getBotState() gagal total.
  */
 function doPost(e) {
   try {
+    // Jalankan logika utama pemrosesan permintaan
     _handleRequest(e);
   } catch (err) {
-    console.error("--- SEBUAH ERROR KRITIS TERJADI DI doPost ---");
+    // --- BLOK PENANGANAN ERROR DARURAT ---
+    console.error("--- SEBUAH ERROR KRITIS TERJADI DI doPost (LEVEL TERTINGGI) ---");
     console.error(`PESAN ERROR ASLI: ${err.message}`);
     console.error(`STACK TRACE: ${err.stack}`);
 
     try {
-      //const properties = PropertiesService.getScriptProperties();
+      // Jangan bergantung pada getBotState() yang mungkin gagal.
+      // Baca langsung dari PropertiesService sebagai upaya terakhir.
+      const properties = PropertiesService.getScriptProperties();
       const botToken = properties.getProperty("TELEGRAM_BOT_TOKEN");
 
       // Karena config gagal dimuat, kita tidak tahu environment-nya.
       // Kirim notifikasi ke kedua chat ID (DEV dan PROD) untuk memastikan pesan sampai.
       const prodChatId = properties.getProperty("TELEGRAM_CHAT_ID");
       const devChatId = properties.getProperty("TELEGRAM_CHAT_ID_DEV");
-      const targetChatIds = [...new Set([prodChatId, devChatId])].filter(Boolean);
+      const targetChatIds = [...new Set([prodChatId, devChatId])].filter(Boolean); // Hapus duplikat & nilai kosong
 
       if (botToken && targetChatIds.length > 0) {
-        const errorMessage = `🔴 <b>Peringatan Kritis di doPost</b>\n\nBot mengalami error fatal yang tidak tertangani.\n\n<i>Pesan:</i>\n<pre>${escapeHtml(
-          err.message
-        )}</pre>\n\nMohon periksa log eksekusi Apps Script untuk detail lengkap.`;
+        const errorMessage =
+          `🔴 <b>Peringatan Kritis di Level Tertinggi</b>\n\n` +
+          `Bot mengalami error fatal yang tidak tertangani saat inisialisasi awal. Ini kemungkinan besar disebabkan oleh masalah pada sheet "Konfigurasi" atau "Hak Akses".\n\n` +
+          `<i>Pesan Error:</i>\n<pre>${escapeHtml(err.message)}</pre>\n\n` +
+          `Mohon segera periksa log eksekusi Apps Script untuk detail lengkap.`;
 
         const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
         targetChatIds.forEach((chatId) => {
@@ -667,9 +704,11 @@ function doPost(e) {
         });
       }
     } catch (notificationError) {
-      console.error("GAGAL MENGIRIM NOTIFIKASI ERROR KRITIS: " + notificationError.message);
+      // Jika bahkan notifikasi darurat pun gagal, catat di log.
+      console.error("GAGAL TOTAL: Tidak dapat mengirim notifikasi error kritis. " + notificationError.message);
     }
   } finally {
+    // Selalu kembalikan respons OK ke Telegram untuk mencegah pengiriman ulang.
     return HtmlService.createHtmlOutput("OK");
   }
 }
@@ -883,7 +922,7 @@ function _handleRequest(e) {
       const userMentionText = firstName
         ? `<a href="tg://user?id=${userEvent.from.id}">${escapeHtml(firstName)}</a>`
         : "Anda";
-      
+
       let message = `❌ Maaf ${userMentionText}, Anda tidak memiliki hak akses untuk menggunakan bot ini.\n\n`;
       message += `Jika Anda seharusnya memiliki akses, silakan hubungi administrator atau gunakan perintah:\n<code>${KONSTANTA.PERINTAH_BOT.DAFTAR} email.anda@domain.com</code>`;
 
@@ -1011,38 +1050,34 @@ function onOpen() {
  * untuk menghindari timeout saat dijalankan dari menu.
  */
 function runDailyJobsWithUiFeedback() {
-  const { config, userDataMap } = getBotState(); // Menggunakan getBotState untuk efisiensi
+  const { config } = getBotState();
 
-  // Memberi notifikasi ke UI Spreadsheet
   SpreadsheetApp.getUi().alert(
     "Permintaan Diterima",
     "Sinkronisasi penuh dan pembuatan laporan telah ditambahkan ke antrean dan akan diproses di latar belakang. Anda akan menerima laporan di Telegram setelah selesai.",
     SpreadsheetApp.getUi().ButtonSet.OK
   );
 
-  // Memilih chat ID tujuan secara dinamis berdasarkan properti ENVIRONMENT.
   const targetChatId = config.ENVIRONMENT === "DEV" ? config.TELEGRAM_CHAT_ID_DEV : config.TELEGRAM_CHAT_ID;
-
-  // Mengirim pesan status awal ke Telegram
-  const timestamp = new Date().toLocaleString("id-ID", { hour: "2-digit", minute: "2-digit" });
-  let pesanAwal = `<b>Permintaan diterima pada pukul ${timestamp} (dari Menu)</b>\n\n⏳ Sinkronisasi penuh & pembuatan laporan telah ditambahkan ke antrean...`;
-  const sentMessage = kirimPesanTelegram(pesanAwal, config, "HTML");
   let statusMessageId = null;
+
+  const timestamp = new Date().toLocaleString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  let pesanAwal = `<b>Permintaan diterima pada pukul ${timestamp} (dari Menu Spreadsheet)</b>\n\n⏳ Sinkronisasi penuh & pembuatan laporan telah ditambahkan ke antrean...`;
+
+  const sentMessage = kirimPesanTelegram(pesanAwal, config, "HTML", null, targetChatId);
   if (sentMessage && sentMessage.ok) {
     statusMessageId = sentMessage.result.message_id;
   }
 
-  // Membuat tiket pekerjaan (job)
   const jobData = {
     jobType: "sync_and_report",
     config: config,
-    chatId: targetChatId, // Menggunakan variabel targetChatId yang sudah benar
-    statusMessageId: statusMessageId, // Menyertakan ID pesan status
+    chatId: targetChatId,
+    statusMessageId: statusMessageId,
+    userData: { firstName: "Menu Spreadsheet" },
   };
 
-  // Menambahkan pekerjaan ke antrean
   const jobKey = `job_manual_sync_${Date.now()}`;
-  //PropertiesService.getScriptProperties().setProperty(jobKey, JSON.stringify(jobData));
   tambahTugasKeAntreanDanPicu(jobKey, jobData);
 }
 
