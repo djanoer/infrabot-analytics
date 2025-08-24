@@ -134,7 +134,7 @@ const KONSTANTA = {
 
     // Interactive & Actions
     CEK_TIKET: "/tickets",
-    REKOMENDASI_SETUP: "/provision",
+    REKOMENDASI_SETUP: "/setup",
     GRAFIK: "/chart",
     SIMULASI: "/simulate",
     LOG_REPORT: "/logstorage",

@@ -866,7 +866,7 @@ function _handleRequest(e) {
       const email = commandParts[1];
       if (!email || !email.includes("@") || !email.includes(".")) {
         kirimPesanTelegram(
-          `Format salah. Gunakan:\n<code>/daftar email.anda@domain.com</code>`,
+          `Format salah. Gunakan:\n<code>${KONSTANTA.PERINTAH_BOT.DAFTAR} email.anda@domain.com</code>`,
           config,
           "HTML",
           null,
