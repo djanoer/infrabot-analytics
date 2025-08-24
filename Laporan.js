@@ -586,29 +586,52 @@ function generateStorageUtilizationReport(config) {
 }
 
 /**
- * [BARU] Menganalisis sebuah datastore secara komprehensif.
+ * [BARU & DIPERBAIKI] Menganalisis sebuah datastore secara komprehensif.
+ * Fungsi ini sekarang mengambil data langsung dari Repositori dan tidak lagi
+ * bergantung pada fungsi getDatastoreDetails yang sudah dihapus.
  */
 function generateDatastoreAnalysis(datastoreName, config) {
+  const K = KONSTANTA.KUNCI_KONFIG;
+
+  // Langkah 1: Ambil semua data datastore dari repositori (cepat karena ada cache)
+  const { headers: dsHeaders, dataRows: allDsData } = RepositoriData.getSemuaDatastore(config);
+
+  // Langkah 2: Temukan baris datastore yang spesifik
+  const dsNameIndex = dsHeaders.indexOf(config[K.DS_NAME_HEADER]);
+  const dsRow = allDsData.find(row => (row[dsNameIndex] || "").toLowerCase() === datastoreName.toLowerCase());
+
   const analysis = {
     totalVms: 0,
     on: 0,
     off: 0,
-    details: getDatastoreDetails(datastoreName, config),
+    details: null, // Default ke null
   };
 
-  if (!analysis.details) return analysis;
+  // Langkah 3: Jika barisnya ditemukan, proses datanya untuk 'details'
+  if (dsRow) {
+    const capacityGb = parseLocaleNumber(dsRow[dsHeaders.indexOf(config[K.HEADER_DS_CAPACITY_GB])]);
+    const provisionedGb = parseLocaleNumber(dsRow[dsHeaders.indexOf(config[K.HEADER_DS_PROV_DS_GB])]);
 
+    analysis.details = {
+      capacityGb: capacityGb,
+      provisionedGb: provisionedGb,
+      usagePercent: capacityGb > 0 ? (provisionedGb / capacityGb) * 100 : 0,
+    };
+  } else {
+    console.error(`Tidak dapat menemukan detail untuk datastore: ${datastoreName}`);
+    return analysis; // Kembalikan analisis parsial jika datastore tidak ditemukan
+  }
+
+  // Langkah 4: Hitung jumlah VM di datastore tersebut (logika ini tetap sama)
   try {
-    const { headers, results: vmsInDatastore } = searchVmsByDatastore(datastoreName, config);
+    const { headers: vmHeaders, results: vmsInDatastore } = searchVmsByDatastore(datastoreName, config);
     analysis.totalVms = vmsInDatastore.length;
 
     if (vmsInDatastore.length > 0) {
-      const stateIndex = headers.indexOf(config[KONSTANTA.KUNCI_KONFIG.HEADER_VM_STATE]);
+      const stateIndex = vmHeaders.indexOf(config[K.HEADER_VM_STATE]);
       if (stateIndex !== -1) {
         vmsInDatastore.forEach((row) => {
-          String(row[stateIndex] || "")
-            .toLowerCase()
-            .includes("on")
+          String(row[stateIndex] || "").toLowerCase().includes("on")
             ? analysis.on++
             : analysis.off++;
         });

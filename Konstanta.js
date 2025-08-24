@@ -26,6 +26,7 @@ const KONSTANTA = {
     ID_SUMBER: "SUMBER_SPREADSHEET_ID",
     SHEET_VM: "NAMA_SHEET_DATA_UTAMA",
     SHEET_DS: "NAMA_SHEET_DATASTORE",
+    SHEET_REPLIKASI: "NAMA_SHEET_DATA_REPLIKASI",
     TIKET_SPREADSHEET_ID: "TIKET_SPREADSHEET_ID",
     NAMA_SHEET_TIKET: "NAMA_SHEET_TIKET",
     FOLDER_ARSIP: "FOLDER_ID_ARSIP",
@@ -101,6 +102,11 @@ const KONSTANTA = {
     HEADER_TIKET_TGL_DONE: "HEADER_TIKET_TGL_DONE",
     HEADER_TIKET_DEV_OPS: "HEADER_TIKET_DEV_OPS",
     HEADER_TIKET_KETERANGAN: "HEADER_TIKET_KETERANGAN",
+
+    HEADER_PENGGUNA_ID: "User ID",
+    HEADER_PENGGUNA_NAMA: "Nama Pengguna",
+    HEADER_PENGGUNA_EMAIL: "Email Google",
+    HEADER_PENGGUNA_ROLE: "Role",
   },
 
   // Nama file arsip
@@ -149,7 +155,8 @@ const KONSTANTA = {
     SYNC_LAPORAN: "/sync",
     ARSIPKAN_LOG: "/archive",
     CLEAR_CACHE: "/clearcache",
-    MANAGE_CONFIG: "/config",
+    MANAGE_CONFIG: "/manageconfig",
+    MANAGE_USERS: "/users",
   },
 
   // String yang sering digunakan
@@ -164,7 +171,7 @@ const KONSTANTA = {
   },
 
   // Perintah yang hanya bisa diakses oleh Admin
-  PERINTAH_ADMIN: ["/syncdata", "/jalankanarsip", "/bersihkancache", "/manageconfig"],
+  PERINTAH_ADMIN: ["/sync", "/archive", "/clearcache", "/manageconfig", "/users"],
 
   /**
    * Mendefinisikan tipe data yang diharapkan untuk kunci konfigurasi.

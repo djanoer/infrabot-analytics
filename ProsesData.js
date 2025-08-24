@@ -47,6 +47,13 @@ function jalankanAlurSinkronisasiPenuh(config, triggerSource) {
       processDataChanges(config, sheetDsName, KONSTANTA.NAMA_FILE.ARSIP_DS, config[KUNCI.DS_NAME_HEADER], (config[KUNCI.KOLOM_PANTAU_DS] || []).map(n => ({nama: n})), KONSTANTA.NAMA_ENTITAS.DATASTORE);
     }
 
+    // Salin sheet data replikasi jika dikonfigurasikan
+    const sheetReplikasiName = config[KUNCI.SHEET_REPLIKASI];
+    if (sheetReplikasiName) {
+      console.log(`Menyalin sheet data replikasi: ${sheetReplikasiName}`);
+      salinDataSheet(sheetReplikasiName, sumberId);
+    }
+
     // 3. Buat laporan
     console.log("Sinkronisasi selesai. Membuat laporan...");
     const pesanLaporan = buatLaporanHarianVM(config);

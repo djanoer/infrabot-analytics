@@ -652,6 +652,11 @@ const commandHandlers = {
       }
     }
   },
+  [KONSTANTA.PERINTAH_BOT.MANAGE_USERS]: (update, config) => {
+    const allUsers = RepositoriData.getSemuaPengguna();
+    const { pesan, keyboard } = formatUserList(allUsers, 1, config);
+    kirimPesanTelegram(pesan, config, "HTML", keyboard, update.message.chat.id);
+},
 };
 
 // djanoer/infrabot-analytics/infrabot-analytics-c2ee3769cab1b649c1c5aa43c9e5759fc9c4e2bc/Utama.js
@@ -813,6 +818,9 @@ function _handleRequest(e) {
             break;
           case "health_machine":
             healthMachine(update, action, config, userData);
+            break;
+          case "user_management_machine":
+            userManagementMachine(update, action, config);
             break;
           default:
             console.warn(`Mesin tidak dikenal: ${machineName}`);
@@ -1001,7 +1009,9 @@ function kirimPesanInfo(update, config, userData) {
       `<code>${K.SYNC_LAPORAN}</code> - Sinkronisasi data & laporan lengkap.\n` +
       `<code>${K.ARSIPKAN_LOG}</code> - Jalankan pengarsipan semua log manual.\n` +
       `<code>${K.CLEAR_CACHE}</code> - Bersihkan cache hak akses & konfigurasi.\n` +
-      `<code>${K.MANAGE_CONFIG}</code> - Kelola konfigurasi bot secara interaktif.`;
+      `<code>${K.MANAGE_CONFIG}</code> - Kelola konfigurasi bot secara interaktif.\n` +
+      `<code>${K.MANAGE_USERS}</code> - Kelola (ubah/hapus) pengguna terdaftar.`;
+
   }
 
   kirimPesanTelegram(infoPesan, config, "HTML", null, chatId);

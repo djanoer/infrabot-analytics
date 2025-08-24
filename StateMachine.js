@@ -85,7 +85,8 @@ function noteMachine(update, action, config) {
     };
     editMessageText(confirmationText, confirmationKeyboard, chatId, messageId, config);
   } else if (action === "confirm_delete") {
-    if (deleteVmNote(pk)) {
+    // PERUBAHAN: Memanggil RepositoriData secara langsung
+    if (RepositoriData.hapusCatatan(pk)) {
       // Refresh tampilan detail VM setelah berhasil hapus
       const { headers, results } = searchVmOnSheet(pk, config);
       if (results.length > 0) {
@@ -168,17 +169,14 @@ function handleNoteTextInput(update, userState, config, userAccessMap) {
     return;
   }
 
-  // --- BLOK VALIDASI BARU DITAMBAHKAN DI SINI ---
   if (!isValidInput(text)) {
     const errorMessage = `❌ Input tidak valid. Catatan tidak boleh kosong atau diawali dengan karakter formula (=, +, -, @). Silakan coba lagi.\n\nKirim "batal" untuk membatalkan.`;
     kirimPesanTelegram(errorMessage, config, "HTML", null, userEvent.chat.id);
-    setUserState(userId, userState); // Pertahankan state agar pengguna bisa mencoba lagi
+    setUserState(userId, userState); 
     return;
   }
-  // --- AKHIR BLOK BARU ---
 
   if (text.length > 100) {
-    // Validasi panjang sekarang dipisahkan
     const errorMessage = `❌ Catatan terlalu panjang (maks 100 karakter). Silakan coba lagi.\n\nKirim "batal" untuk membatalkan.`;
     kirimPesanTelegram(errorMessage, config, "HTML", null, userEvent.chat.id);
     setUserState(userId, userState);
@@ -188,7 +186,8 @@ function handleNoteTextInput(update, userState, config, userAccessMap) {
   const userData = userAccessMap.get(userId) || {};
   userData.firstName = userEvent.from.first_name;
 
-  if (saveOrUpdateVmNote(pk, text, userData)) {
+  // PERUBAHAN: Memanggil RepositoriData secara langsung
+  if (RepositoriData.simpanAtauPerbaruiCatatan(pk, text, userData)) {
     const { headers, results } = searchVmOnSheet(pk, config);
     if (results.length > 0) {
       const { pesan, keyboard } = formatVmDetail(results[0], headers, config);
@@ -696,5 +695,83 @@ function handleRekomendasiTextInput(update, userState, config) {
       // Edit pesan "tunggu" dengan hasil akhir
       editMessageText(resultMessage, null, chatId, waitMessage.result.message_id, config);
     }
+  }
+}
+
+/**
+ * [BARU] State machine untuk alur kerja manajemen pengguna.
+ */
+function userManagementMachine(update, action, config) {
+  const userEvent = update.callback_query;
+  const sessionData = userEvent.sessionData;
+  const chatId = userEvent.message.chat.id;
+  const messageId = userEvent.message.message_id;
+
+  try {
+    if (action === "show_list") {
+      const page = sessionData.page || 1;
+      const allUsers = RepositoriData.getSemuaPengguna();
+      const { pesan, keyboard } = formatUserList(allUsers, page, config);
+      editMessageText(pesan, keyboard, chatId, messageId, config);
+    }
+    else if (action === "select_user") {
+      const { userId } = sessionData;
+      const allUsers = RepositoriData.getSemuaPengguna();
+      const selectedUser = allUsers.find(u => u.userId === userId);
+
+      if (!selectedUser) {
+        editMessageText("❌ Pengguna tidak lagi ditemukan.", null, chatId, messageId, config);
+        return;
+      }
+
+      const { pesan, keyboard } = formatUserDetail(selectedUser, config);
+      editMessageText(pesan, keyboard, chatId, messageId, config);
+    }
+    else if (action === "prompt_change_role") {
+        const { userId, nama, currentRole } = sessionData;
+        const newRole = currentRole === "Admin" ? "User" : "Admin";
+        const pesan = `Anda akan mengubah peran untuk <b>${escapeHtml(nama)}</b> (${currentRole}) menjadi <b>${newRole}</b>.\n\nApakah Anda yakin?`;
+        const keyboard = {
+            inline_keyboard: [
+                [{ text: `✅ Ya, Ubah menjadi ${newRole}`, callback_data: CallbackHelper.build('user_management_machine', 'confirm_change_role', { userId, newRole }, config) }],
+                [{ text: "❌ Batal", callback_data: CallbackHelper.build('user_management_machine', 'select_user', { userId }, config) }]
+            ]
+        };
+        editMessageText(pesan, keyboard, chatId, messageId, config);
+    }
+    else if (action === "confirm_change_role") {
+        const { userId, newRole } = sessionData;
+        RepositoriData.ubahPeranPengguna(userId, newRole);
+
+        // Segarkan tampilan detail
+        const allUsers = RepositoriData.getSemuaPengguna();
+        const updatedUser = allUsers.find(u => u.userId === userId);
+        const { pesan, keyboard } = formatUserDetail(updatedUser, config);
+        editMessageText(`✅ Peran berhasil diubah.\n\n` + pesan, keyboard, chatId, messageId, config);
+
+    }
+    else if (action === "prompt_delete") {
+        const { userId, nama } = sessionData;
+        const pesan = `Anda akan <b>MENGHAPUS</b> pengguna:\n<b>${escapeHtml(nama)}</b> (ID: <code>${userId}</code>).\n\nAksi ini tidak dapat dibatalkan. Apakah Anda benar-benar yakin?`;
+        const keyboard = {
+            inline_keyboard: [
+                [{ text: "🔴 Ya, Hapus Pengguna Ini", callback_data: CallbackHelper.build('user_management_machine', 'confirm_delete', { userId, nama }, config) }],
+                [{ text: "❌ Batal", callback_data: CallbackHelper.build('user_management_machine', 'select_user', { userId }, config) }]
+            ]
+        };
+        editMessageText(pesan, keyboard, chatId, messageId, config);
+    }
+    else if (action === "confirm_delete") {
+        const { nama } = sessionData;
+        RepositoriData.hapusPengguna(sessionData.userId);
+        const pesan = `✅ Pengguna <b>${escapeHtml(nama)}</b> telah berhasil dihapus.`;
+        const keyboard = { inline_keyboard: [[{ text: "⬅️ Kembali ke Daftar Pengguna", callback_data: CallbackHelper.build('user_management_machine', 'show_list', { page: 1 }, config) }]] };
+        editMessageText(pesan, keyboard, chatId, messageId, config);
+    }
+    else if (action === "cancel_view") {
+        editMessageText("<i>Tindakan dibatalkan.</i>", null, chatId, messageId, config);
+    }
+  } catch(e) {
+      handleCentralizedError(e, `Manajemen Pengguna (${action})`, config);
   }
 }

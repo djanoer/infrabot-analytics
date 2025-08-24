@@ -297,5 +297,90 @@ const RepositoriData = (function () {
         return false;
       }
     },
+
+    /**
+     * [BARU & DIPERBAIKI] Mengambil semua pengguna dari sheet 'Hak Akses' menggunakan konstanta.
+     * @returns {Array<object>} Array berisi objek pengguna.
+     */
+    getSemuaPengguna: function() {
+      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(KONSTANTA.NAMA_SHEET.HAK_AKSES);
+      const allUsers = [];
+      const K = KONSTANTA.KUNCI_KONFIG;
+
+      if (!sheet || sheet.getLastRow() < 2) {
+        return allUsers;
+      }
+
+      const data = sheet.getDataRange().getValues();
+      const headers = data.shift();
+
+      // Menggunakan konstanta untuk mencari indeks kolom, bukan string hardcode
+      const idIndex = headers.indexOf(K.HEADER_PENGGUNA_ID);
+      const nameIndex = headers.indexOf(K.HEADER_PENGGUNA_NAMA);
+      const emailIndex = headers.indexOf(K.HEADER_PENGGUNA_EMAIL);
+      const roleIndex = headers.indexOf(K.HEADER_PENGGUNA_ROLE);
+
+      if ([idIndex, nameIndex, emailIndex, roleIndex].includes(-1)) {
+        console.error("Satu atau lebih header di sheet 'Hak Akses' tidak ditemukan. Periksa konfigurasi di Konstanta.js.");
+        return []; // Kembalikan array kosong untuk mencegah error
+      }
+
+      data.forEach((row, index) => {
+        if (row[idIndex]) {
+          allUsers.push({
+            rowNum: index + 2,
+            userId: String(row[idIndex]),
+            nama: row[nameIndex],
+            email: row[emailIndex],
+            role: row[roleIndex]
+          });
+        }
+      });
+      return allUsers;
+    },
+
+    /**
+     * [BARU] Mengubah peran seorang pengguna di sheet.
+     * @param {string} userId - ID pengguna yang akan diubah.
+     * @param {string} peranBaru - Peran baru ('Admin' atau 'User').
+     * @returns {boolean} True jika berhasil.
+     */
+    ubahPeranPengguna: function(userId, peranBaru) {
+      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(KONSTANTA.NAMA_SHEET.HAK_AKSES);
+      if (!sheet) return false;
+
+      const data = sheet.getRange("A:D").getValues();
+      const roleIndex = data[0].indexOf("Role");
+
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][0]) === String(userId)) {
+          sheet.getRange(i + 1, roleIndex + 1).setValue(peranBaru);
+          clearBotStateCache(); // Penting: Hapus cache agar perubahan segera aktif
+          return true;
+        }
+      }
+      return false;
+    },
+
+    /**
+     * [BARU] Menghapus seorang pengguna dari sheet 'Hak Akses'.
+     * @param {string} userId - ID pengguna yang akan dihapus.
+     * @returns {boolean} True jika berhasil.
+     */
+    hapusPengguna: function(userId) {
+      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(KONSTANTA.NAMA_SHEET.HAK_AKSES);
+      if (!sheet) return false;
+
+      const data = sheet.getRange("A:A").getValues();
+
+      for (let i = data.length - 1; i >= 1; i--) { // Iterasi dari bawah ke atas aman untuk penghapusan
+        if (String(data[i][0]) === String(userId)) {
+          sheet.deleteRow(i + 1);
+          clearBotStateCache(); // Penting: Hapus cache agar perubahan segera aktif
+          return true;
+        }
+      }
+      return false;
+    },
   };
 })();

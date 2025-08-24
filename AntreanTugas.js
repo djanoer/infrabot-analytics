@@ -139,7 +139,7 @@ function _hapusTriggerYangAda(functionName) {
 }
 
 /**
- * [REVISI DENGAN PRA-PEMROSESAN TIKET] Mesin state machine untuk menjalankan
+ * [REVISI DENGAN PRA-PEMROSESAN TIKET & PENYIMPANAN CACHE] Mesin state machine untuk menjalankan
  * kalkulasi Health Score secara bertahap, efisien, dan andal.
  * @param {object} jobData - Objek data pekerjaan dari antrean.
  */
@@ -149,6 +149,8 @@ function executeHealthScoreJob(jobData) {
   const properties = PropertiesService.getScriptProperties();
   const cache = CacheService.getScriptCache();
   const config = getBotState().config;
+  const JOB_ID = jobData.jobId || `health_job_${Date.now()}`; // Pastikan ada ID unik
+  const CACHE_KEY_SCORES = `health_scores_intermediate_${JOB_ID}`;
 
   try {
     if (stage === "gather_data") {
@@ -158,7 +160,6 @@ function executeHealthScoreJob(jobData) {
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
       const { headers: logHeaders, data: recentLogs } = getCombinedLogs(ninetyDaysAgo, config);
 
-      // Proses log riwayat
       const pkLogIndex = logHeaders.indexOf(config.HEADER_VM_PK);
       const actionLogIndex = logHeaders.indexOf(config.HEADER_LOG_ACTION);
       const historyMap = new Map();
@@ -170,7 +171,6 @@ function executeHealthScoreJob(jobData) {
         }
       }
 
-      // --- BLOK BARU: Pra-pemrosesan Data Tiket ---
       const { headers: ticketHeaders, dataRows: allTickets } = RepositoriData.getSemuaTiket(config);
       const ticketVmNameIndex = ticketHeaders.indexOf(config.HEADER_TIKET_NAMA_VM);
       const ticketMap = new Map();
@@ -179,30 +179,22 @@ function executeHealthScoreJob(jobData) {
 
       if (ticketVmNameIndex !== -1 && statusTiketIndex !== -1) {
         for (const ticketRow of allTickets) {
-          const ticketStatus = String(ticketRow[statusTiketIndex] || "")
-            .toLowerCase()
-            .trim();
-          // Hanya proses tiket yang tidak berstatus selesai
+          const ticketStatus = String(ticketRow[statusTiketIndex] || "").toLowerCase().trim();
           if (ticketStatus && !statusSelesai.includes(ticketStatus)) {
             const vmName = ticketRow[ticketVmNameIndex];
             if (vmName) {
               if (!ticketMap.has(vmName)) ticketMap.set(vmName, []);
-              ticketMap.get(vmName).push({
-                /* data tiket sederhana */
-              });
+              ticketMap.get(vmName).push({});
             }
           }
         }
       }
-      // --- AKHIR BLOK BARU ---
 
-      // Simpan semua data mentah yang mahal untuk diproses ke cache
       saveLargeDataToCache("health_score_raw_vms", { headers, allVms }, 1800);
       saveLargeDataToCache("health_score_raw_history", Array.from(historyMap.entries()), 1800);
-      saveLargeDataToCache("health_score_raw_tickets", Array.from(ticketMap.entries()), 1800); // <-- Simpan data tiket
+      saveLargeDataToCache("health_score_raw_tickets", Array.from(ticketMap.entries()), 1800);
 
-      // Jadwalkan tahap berikutnya
-      const nextJobData = { ...jobData, stage: "process_batch", context: { batchIndex: 0, allScores: [] } };
+      const nextJobData = { ...jobData, jobId: JOB_ID, stage: "process_batch", context: { batchIndex: 0 } };
       tambahTugasKeAntreanDanPicu(`job_health_score_${Date.now()}`, nextJobData);
       console.log("Health Score - Tahap 1 Selesai. Menjadwalkan Tahap 2.");
     } else if (stage === "process_batch") {
@@ -211,14 +203,13 @@ function executeHealthScoreJob(jobData) {
 
       const rawVmsData = readLargeDataFromCache("health_score_raw_vms");
       const rawHistoryData = readLargeDataFromCache("health_score_raw_history");
-      const rawTicketData = readLargeDataFromCache("health_score_raw_tickets"); // <-- Baca data tiket
+      const rawTicketData = readLargeDataFromCache("health_score_raw_tickets"); 
 
-      if (!rawVmsData || !rawHistoryData || !rawTicketData)
-        throw new Error("Cache data mentah tidak ditemukan. Proses dibatalkan.");
+      if (!rawVmsData || !rawHistoryData || !rawTicketData) throw new Error("Cache data mentah tidak ditemukan. Proses dibatalkan.");
 
       const { headers, allVms } = rawVmsData;
       const historyMap = new Map(rawHistoryData);
-      const ticketMap = new Map(rawTicketData); // <-- Buat Map tiket
+      const ticketMap = new Map(rawTicketData);
 
       const pkIndex = headers.indexOf(config.HEADER_VM_PK);
       const vmNameIndex = headers.indexOf(config.HEADER_VM_NAME);
@@ -228,7 +219,7 @@ function executeHealthScoreJob(jobData) {
       const vmBatch = allVms.slice(startIndex, endIndex);
 
       if (vmBatch.length === 0) {
-        const finalJobData = { ...jobData, stage: "finalize", context: { allScores: context.allScores } };
+        const finalJobData = { ...jobData, stage: "finalize" };
         tambahTugasKeAntreanDanPicu(`job_health_score_${Date.now()}`, finalJobData);
         console.log("Health Score - Semua batch selesai. Menjadwalkan Tahap Final.");
         return;
@@ -238,23 +229,20 @@ function executeHealthScoreJob(jobData) {
         const pk = normalizePrimaryKey(vmRow[pkIndex]);
         const vmName = vmRow[vmNameIndex];
         const vmHistory = historyMap.get(pk) || [];
-        const vmTickets = ticketMap.get(vmName) || []; // <-- Ambil tiket dari Map (sangat cepat)
-
+        const vmTickets = ticketMap.get(vmName) || [];
         const health = calculateVmHealthScore(vmRow, headers, config, vmHistory, vmTickets);
         return { name: vmName, score: health.score, reasons: health.reasons.join(", ") };
       });
 
-      const updatedScores = context.allScores.concat(batchScores);
+      const cachedScores = readLargeDataFromCache(CACHE_KEY_SCORES) || [];
+      const updatedScores = cachedScores.concat(batchScores);
+      saveLargeDataToCache(CACHE_KEY_SCORES, updatedScores, 1800);
 
-      const nextJobData = {
-        ...jobData,
-        stage: "process_batch",
-        context: { batchIndex: batchIndex + 1, allScores: updatedScores },
-      };
+      const nextJobData = { ...jobData, stage: "process_batch", context: { batchIndex: batchIndex + 1 } };
       tambahTugasKeAntreanDanPicu(`job_health_score_${Date.now()}`, nextJobData);
     } else if (stage === "finalize") {
       console.log("Health Score - Tahap Final: Menyelesaikan laporan...");
-      let allScores = context.allScores;
+      let allScores = readLargeDataFromCache(CACHE_KEY_SCORES) || [];
       allScores = allScores.filter((vm) => vm.score > 0);
       allScores.sort((a, b) => b.score - a.score);
       const top10 = allScores.slice(0, 10);
@@ -268,20 +256,20 @@ function executeHealthScoreJob(jobData) {
           kirimPesanTelegram(notifMessage, config, "HTML", null, requesterId);
           cache.remove("health_report_requester");
         } catch (notifError) {
-          console.error(
-            `Gagal mengirim notifikasi penyelesaian Health Score ke user ID ${requesterId}: ${notifError.message}`
-          );
+          console.error(`Gagal mengirim notifikasi penyelesaian Health Score ke user ID ${requesterId}: ${notifError.message}`);
         }
       }
 
-      // Hapus semua cache data mentah
       removeLargeDataFromCache("health_score_raw_vms");
       removeLargeDataFromCache("health_score_raw_history");
-      removeLargeDataFromCache("health_score_raw_tickets"); // <-- Hapus cache tiket
+      removeLargeDataFromCache("health_score_raw_tickets");
+      removeLargeDataFromCache(CACHE_KEY_SCORES);
       console.log("Health Score - Proses Selesai. Laporan final disimpan ke cache.");
     }
   } catch (e) {
     console.error(`Gagal mengeksekusi Health Score tahap '${stage}': ${e.message}`);
+    // Hapus cache sementara jika terjadi error agar tidak macet
+    removeLargeDataFromCache(CACHE_KEY_SCORES);
   }
 }
 

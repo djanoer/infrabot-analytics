@@ -131,12 +131,11 @@ function formatVmDetail(row, headers, config) {
     K.HEADER_VM_VCENTER,
     K.HEADER_VM_NO_TIKET,
     K.HEADER_VM_HOSTS,
-    K.HEADER_VM_TANGGAL_SETUP, // <-- Penambahan baru
+    K.HEADER_VM_TANGGAL_SETUP,
   ];
   const indices = {};
   for (const headerKey of requiredHeaderKeys) {
     const headerName = config[headerKey];
-    // Menjadikan No Tiket, Host, dan Tanggal Setup sebagai opsional
     const isOptional = [K.HEADER_VM_NO_TIKET, K.HEADER_VM_HOSTS, K.HEADER_VM_TANGGAL_SETUP].includes(headerKey);
 
     if (!headerName && !isOptional) {
@@ -161,7 +160,10 @@ function formatVmDetail(row, headers, config) {
     hostName: row[indices[K.HEADER_VM_HOSTS]],
   };
 
-  const vmNote = getVmNote(vmData.normalizedPk, config);
+  // ==================== PERUBAIKAN UTAMA DI SINI ====================
+  // Mengambil data catatan langsung dari RepositoriData, bukan dari fungsi lama.
+  const vmNote = RepositoriData.getSemuaCatatan().get(vmData.normalizedPk) || null;
+  // ================================================================
 
   let pesan = "🖥️  <b>Detail Virtual Machine</b>\n\n";
   pesan += _buildGeneralInfoSection(vmData);
@@ -697,4 +699,87 @@ function formatReportHeader(title) {
 function formatReportFooter() {
   let footer = `\n\n<i>Laporan ini dihasilkan secara otomatis oleh Sistem Bot Infrastruktur.</i>`;
   return footer;
+}
+
+/**
+ * [BARU & DISEMPURNAKAN] Membuat tampilan daftar pengguna yang interaktif dan berhalaman.
+ */
+function formatUserList(allUsers, page, config) {
+  const title = "👥 Pusat Manajemen Pengguna";
+  const headerContent = `<b>${title}</b>\n\nPilih pengguna dari daftar di bawah untuk dikelola:`;
+
+  const formatUserEntry = (user) => {
+    const roleIcon = user.role === "Admin" ? "👑" : "👤";
+    return `${roleIcon} <b>${escapeHtml(user.nama)}</b>\n     └ <code>${user.userId}</code> | ${user.role}`;
+  };
+
+  const callbackInfo = {
+    machine: "user_management_machine",
+    action: "show_list",
+    context: {},
+  };
+
+  const paginatedView = createPaginatedView(
+    allUsers,
+    page,
+    title,
+    headerContent,
+    formatUserEntry,
+    callbackInfo,
+    config
+  );
+
+  const entriesPerPage = (config.SYSTEM_LIMITS && config.SYSTEM_LIMITS.PAGINATION_ENTRIES) || 15;
+  const pageEntries = allUsers.slice((page - 1) * entriesPerPage, page * entriesPerPage);
+
+  const actionButtons = pageEntries.map((user) => {
+      return [{
+        text: `Kelola ${escapeHtml(user.nama)}`,
+        callback_data: CallbackHelper.build('user_management_machine', 'select_user', { userId: user.userId }, config)
+      }];
+  });
+
+  // Gabungkan tombol aksi, tombol navigasi, dan tombol Batal
+  paginatedView.keyboard.inline_keyboard = actionButtons.concat(paginatedView.keyboard.inline_keyboard);
+  paginatedView.keyboard.inline_keyboard.push(
+      [{ text: "❌ Batal", callback_data: CallbackHelper.build('user_management_machine', 'cancel_view', {}, config) }]
+  );
+
+  return { pesan: paginatedView.text, keyboard: paginatedView.keyboard };
+}
+
+/**
+ * [BARU & DISEMPURNAKAN] Membuat tampilan detail untuk satu pengguna.
+ */
+function formatUserDetail(userData, config) {
+  const roleIcon = userData.role === "Admin" ? "👑" : "👤";
+  let pesan = `<b>Detail Pengguna</b>\n\n`;
+  pesan += `${roleIcon} <b>Nama:</b> ${escapeHtml(userData.nama)}\n`;
+  pesan += `🆔 <b>User ID:</b> <code>${userData.userId}</code>\n`;
+  pesan += `📧 <b>Email:</b> <code>${userData.email}</code>\n`;
+  pesan += `🛡️ <b>Peran Saat Ini:</b> ${userData.role}\n`;
+
+  const keyboard = {
+    inline_keyboard: [
+      [{
+        text: `Ubah Peran menjadi ${userData.role === 'Admin' ? 'User' : 'Admin'}`,
+        callback_data: CallbackHelper.build('user_management_machine', 'prompt_change_role', { userId: userData.userId, nama: userData.nama, currentRole: userData.role }, config)
+      }],
+      [{
+        text: "🗑️ Hapus Pengguna Ini",
+        callback_data: CallbackHelper.build('user_management_machine', 'prompt_delete', { userId: userData.userId, nama: userData.nama }, config)
+      }],
+      [{
+        text: "⬅️ Kembali ke Daftar",
+        callback_data: CallbackHelper.build('user_management_machine', 'show_list', { page: 1 }, config)
+      }],
+      // Tambahkan tombol Batal di baris terakhir
+      [{
+        text: "❌ Batal",
+        callback_data: CallbackHelper.build('user_management_machine', 'cancel_view', {}, config)
+      }]
+    ]
+  };
+
+  return { pesan, keyboard };
 }

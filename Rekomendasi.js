@@ -90,30 +90,36 @@ function dapatkanRekomendasiPenempatan(requirements, config) {
       datastoreDetailsMap
     );
 
+    // ==================== LOGIKA CERDAS BARU DIMULAI DI SINI ====================
     if (validCandidates.length === 0) {
       if (rejected.length > 0) {
+        // Jika tidak ada kandidat ideal, kita analisis kandidat yang ditolak.
         const kandidatBeresiko = skorLokasiKandidat(
           rejected,
           clusterLoadData,
           clusterPolicies,
           datastoreDetailsMap,
           config,
-          true
+          true // Tandai sebagai kandidat berisiko
         );
+        // Urutkan untuk menemukan yang "paling tidak buruk"
         kandidatBeresiko.sort((a, b) => b.skor.total - a.skor.total);
+        // Kirim ke formatter khusus untuk rekomendasi berisiko
         return formatPesanRekomendasi(
-          kandidatBeresiko.slice(0, 1),
+          kandidatBeresiko.slice(0, 1), // Tampilkan hanya 1 opsi terbaik dari yang terburuk
           requirements,
           [],
           applicableRule,
           clusterPolicies,
           datastoreDetailsMap,
           config,
-          true
+          true // Tandai sebagai rekomendasi berisiko
         );
       }
+      // Jika tidak ada kandidat valid DAN tidak ada yg ditolak, baru tampilkan pesan gagal.
       return formatPesanGagal(requirements, rejected, applicableRule);
     }
+    // ==================== AKHIR LOGIKA CERDAS BARU ====================
 
     const kandidatDenganSkor = skorLokasiKandidat(
       validCandidates,
@@ -123,7 +129,6 @@ function dapatkanRekomendasiPenempatan(requirements, config) {
       config
     );
 
-    // --- BLOK LOGIKA STRATEGIS BARU DIMULAI DI SINI ---
     const strategi = config[KONSTANTA.KUNCI_KONFIG.STRATEGI_PENEMPATAN_OPTIMAL] || "BALANCE";
 
     kandidatDenganSkor.sort((a, b) => {
@@ -131,29 +136,23 @@ function dapatkanRekomendasiPenempatan(requirements, config) {
       const dsDetailsB = datastoreDetailsMap.get(b.dsName);
 
       if (strategi === "DENSITY_FIRST") {
-        // Prioritaskan skor, lalu jumlah VM terendah sebagai tie-breaker
         if (b.skor.total !== a.skor.total) {
           return b.skor.total - a.skor.total;
         }
         const vmCountA = dsDetailsA?.vmCount || Infinity;
         const vmCountB = dsDetailsB?.vmCount || Infinity;
-        return vmCountA - vmCountB; // Urutkan dari jumlah VM terendah
+        return vmCountA - vmCountB; 
       } else if (strategi === "FILL_UP") {
-        // Prioritaskan datastore dengan sisa ruang paling sedikit
         const freeGBA = dsDetailsA?.freeGb || -Infinity;
         const freeGBB = dsDetailsB?.freeGb || -Infinity;
-        // Jika sisa ruang sama, baru gunakan skor sebagai tie-breaker
         if (freeGBA !== freeGBB) {
-          return freeGBA - freeGBB; // Urutkan dari sisa ruang terendah
+          return freeGBA - freeGBB; 
         }
         return b.skor.total - a.skor.total;
       } else {
-        // Default ke "BALANCE"
-        // Urutkan murni berdasarkan skor tertinggi
         return b.skor.total - a.skor.total;
       }
     });
-    // --- BLOK LOGIKA STRATEGIS SELESAI ---
 
     return formatPesanRekomendasi(
       kandidatDenganSkor.slice(0, 3),
@@ -446,74 +445,80 @@ function getRuleAsArray(rule, ruleName) {
 }
 
 /**
- * [REVISI PROFESIONAL V3] Memberikan skor pada kandidat dengan logika berbasis penalti
- * yang lebih ideal dan intuitif, memberikan skor tinggi untuk kondisi yang aman.
+ * [REVISI PROFESIONAL V4 - ELEGAN] Memberikan skor pada kandidat dengan logika penalti berjenjang
+ * yang lebih halus dan menambahkan faktor kepadatan VM.
  */
 function skorLokasiKandidat(kandidat, clusterLoadData, clusterPolicies, datastoreDetailsMap, config) {
-  const ambangSkor = config[KONSTANTA.KUNCI_KONFIG.AMBANG_BATAS_SKOR_KELAYAKAN] || { ideal: 90, baik: 75, waspada: 60 };
+  const ambangSkor = config[KONSTANTA.KUNCI_KONFIG.AMBANG_BATAS_SKOR_KELAYAKAN] || { ideal: 90, baik: 75, kompromi: 60 };
+  const ambangKepadatan = config[KONSTANTA.KUNCI_KONFIG.AMBANG_BATAS_KEPADATAN_VM] || { low: 15, medium: 40 };
 
   return kandidat.map((lokasi) => {
     let totalScore = 100;
+    let penalties = []; // Lacak semua penalti untuk transparansi
+
     const dsDetails = datastoreDetailsMap.get(lokasi.dsName);
     const policy = clusterPolicies.get(lokasi.clusterName);
 
-    // 1. Penalti Datastore (Maks 20 Poin)
+    // 1. Penalti Kapasitas Datastore (Bobot: 20 poin)
     let dsUsagePercent = 0;
     if (dsDetails && dsDetails.capacityGb > 0) {
       dsUsagePercent = dsDetails.usagePercent;
-      // Penalti linear sederhana untuk DS
-      totalScore -= (dsUsagePercent / 100) * 20;
+      if (dsUsagePercent > 75) {
+        const penalty = (dsUsagePercent - 75) * 0.8; // Penalti 0.8 poin untuk setiap % di atas 75%
+        totalScore -= penalty;
+        penalties.push(`Kapasitas DS waspada (${dsUsagePercent.toFixed(1)}%)`);
+      }
     }
 
-    // 2. Penalti Cluster (Maks 80 Poin)
-    let cpuUtilEffective = 0,
-      memUtilEffective = 0;
+    // 2. Penalti Kepadatan VM (Bobot: 10 poin)
+    const vmCount = dsDetails ? dsDetails.vmCount : 0;
+    if (vmCount > ambangKepadatan.medium) {
+        totalScore -= 10;
+        penalties.push(`Kepadatan VM tinggi (${vmCount} VM)`);
+    } else if (vmCount > ambangKepadatan.low) {
+        totalScore -= 5;
+        penalties.push(`Kepadatan VM medium (${vmCount} VM)`);
+    }
+
+    // 3. Penalti Beban Cluster (Bobot: 70 poin)
+    let cpuUtilEffective = 0, memUtilEffective = 0;
     let statusBeban = "Rendah";
     if (policy) {
       const currentLoad = clusterLoadData.get(lokasi.clusterName) || { cpu: 0, memory: 0 };
-
-      const maxCpu =
-        (parseInt(policy["physicalcpucores"], 10) || 1) * (parseInt(policy["cpuovercommitratio"], 10) || 1);
+      const maxCpu = (parseInt(policy["physicalcpucores"], 10) || 1) * (parseInt(policy["cpuovercommitratio"], 10) || 1);
       if (maxCpu > 0) cpuUtilEffective = (currentLoad.cpu / maxCpu) * 100;
-
-      const maxMemory =
-        (parseInt(policy["physicalmemorytb"], 10) || 1) * 1024 * (parseInt(policy["memoryovercommitratio"], 10) || 1);
+      const maxMemory = (parseInt(policy["physicalmemorytb"], 10) || 1) * 1024 * (parseInt(policy["memoryovercommitratio"], 10) || 1);
       if (maxMemory > 0) memUtilEffective = (currentLoad.memory / maxMemory) * 100;
-
       const highestUtil = Math.max(cpuUtilEffective, memUtilEffective);
 
-      // Penalti eksponensial: hanya signifikan setelah melewati 50%
-      const clusterPenalty = 80 * Math.pow(Math.max(0, highestUtil - 50) / 50, 2);
-      totalScore -= clusterPenalty;
-
-      if (highestUtil >= 85) statusBeban = "Kritis";
-      else if (highestUtil >= 70) statusBeban = "Waspada";
+      if (highestUtil > 90) { // Kritis
+        totalScore -= 40;
+        statusBeban = "Kritis";
+        penalties.push(`Beban cluster kritis (${highestUtil.toFixed(1)}%)`);
+      } else if (highestUtil > 75) { // Waspada
+        totalScore -= 20;
+        statusBeban = "Waspada";
+        penalties.push(`Beban cluster waspada (${highestUtil.toFixed(1)}%)`);
+      } else if (highestUtil > 60) { // Cukup
+        totalScore -= 10;
+        statusBeban = "Cukup";
+        penalties.push(`Beban cluster cukup (${highestUtil.toFixed(1)}%)`);
+      }
     }
 
-    let statusKelayakan = "Waspada";
-    if (totalScore >= ambangSkor.ideal) statusKelayakan = "Ideal";
+    let statusKelayakan = "Pilihan Kompromi";
+    if (totalScore >= ambangSkor.ideal) statusKelayakan = "Pilihan Ideal";
     else if (totalScore >= ambangSkor.baik) statusKelayakan = "Pilihan Baik";
 
-    let alasan = "Dipertimbangkan, namun perhatikan beban atau kapasitasnya.";
-    if (statusKelayakan === "Ideal") alasan = "Kondisi ideal. Kapasitas sangat lega dan beban cluster rendah.";
-    else if (statusKelayakan === "Pilihan Baik")
-      alasan = "Pilihan yang baik. Kapasitas cukup dan beban cluster optimal.";
-
     lokasi.skor = { total: Math.max(0, parseFloat(totalScore.toFixed(1))), status: statusKelayakan };
-    lokasi.detail = {
-      dsUsagePercent: dsUsagePercent,
-      clusterCpuUtil: cpuUtilEffective,
-      clusterMemUtil: memUtilEffective,
-      clusterLoadStatus: statusBeban,
-    };
-    lokasi.alasan = alasan;
+    lokasi.detail = { dsUsagePercent, clusterCpuUtil: cpuUtilEffective, clusterMemUtil: memUtilEffective, clusterLoadStatus: statusBeban, penalties };
     return lokasi;
   });
 }
 
 /**
- * [REVISI FINAL V3] Memformat pesan sukses dengan rincian yang lebih informatif,
- * kini mencakup beban CPU, Memori, dan strategi penempatan yang aktif.
+ * [REVISI FINAL V9 - Profesional Indonesia] Memformat pesan rekomendasi
+ * dengan gaya bahasa yang natural, konsisten, dan detail teknis yang jelas.
  */
 function formatPesanRekomendasi(
   kandidatTerbaik,
@@ -525,74 +530,81 @@ function formatPesanRekomendasi(
   config,
   isRiskRecommendation = false
 ) {
-  const ambangKepadatan = config[KONSTANTA.KUNCI_KONFIG.AMBANG_BATAS_KEPADATAN_VM] || { low: 15, medium: 40 };
   const strategi = config[KONSTANTA.KUNCI_KONFIG.STRATEGI_PENEMPATAN_OPTIMAL] || "BALANCE";
+  const TampilkanAturan = req.namaAplikasi ? `Aplikasi (${req.namaAplikasi})` : `Kritikalitas (${req.kritikalitas})`;
 
   let pesan;
   if (isRiskRecommendation) {
-    pesan = `⚠️ <b>Peringatan: Tidak Ada Lokasi Ideal Ditemukan</b>\n\nTidak ditemukan lokasi yang dapat menampung VM baru tanpa melanggar kebijakan. Berikut adalah **opsi paling memungkinkan beserta risikonya**:\n\n`;
+    // PERBAIKAN BAHASA 3: Menggunakan Bahasa Indonesia
+    pesan = `⚠️ <b>Tidak Ada Lokasi Ideal Ditemukan</b>\n\nSemua lokasi yang ada melanggar kebijakan penempatan utama. Berikut adalah <b>opsi kompromi terbaik</b> yang tersedia, lengkap dengan analisis risiko:\n\n`;
   } else {
-    pesan = `💡 <b>Rekomendasi Penempatan VM Baru</b>\n\n`;
+    pesan = `💡 <b>Rekomendasi Penempatan VM</b>\n\n`;
   }
 
-  pesan += `Berdasarkan spesifikasi:\n`;
-  pesan += ` • CPU: ${req.cpu}, Memori: ${req.memory} GB, Disk: ${req.disk} GB\n`;
-  const TampilkanAturan = req.namaAplikasi ? `Aplikasi (${req.namaAplikasi})` : `Kritikalitas (${req.kritikalitas})`;
-  pesan += ` • Aturan: ${TampilkanAturan}, Profil I/O: ${escapeHtml(req.io)}\n`;
-  pesan += ` • Strategi Penempatan: <b>${strategi}</b>\n\n`; // <-- BARIS BARU DITAMBAHKAN DI SINI
+  // PERBAIKAN FORMAT 1: Mengubah format ringkasan permintaan
+  pesan += ` • <b>Spesifikasi:</b> ${req.cpu} vCPU, ${req.memory} GB RAM, ${req.disk} GB Disk\n`;
+  pesan += ` • <b>Aplikasi/Kritikalitas:</b> ${TampilkanAturan}\n`;
+  pesan += ` • <b>Profil I/O:</b> ${escapeHtml(req.io)}\n`;
+  pesan += ` • <b>Strategi Penempatan:</b> ${strategi}\n`;
+  pesan += "\n" + KONSTANTA.UI_STRINGS.SEPARATOR + "\n";
 
-  if (!isRiskRecommendation) {
-    pesan += `Berikut adalah <b>${kandidatTerbaik.length} lokasi terbaik</b> yang direkomendasikan:\n`;
+  if (kandidatTerbaik.length === 0 && !isRiskRecommendation) {
+      return formatPesanGagal(req, rejected, rule);
   }
 
   kandidatTerbaik.forEach((lokasi, index) => {
     const policy = clusterPolicies.get(lokasi.clusterName);
     const cpuRatio = policy ? `${policy["cpuovercommitratio"]}:1` : "N/A";
     const memRatio = policy ? `${policy["memoryovercommitratio"]}:1` : "N/A";
-
     const dsDetails = datastoreDetailsMap.get(lokasi.dsName);
     const vmCount = dsDetails ? dsDetails.vmCount : 0;
 
-    let kepadatanStatus = "Tinggi";
-    let kepadatanEmoji = "🔥";
-    if (vmCount <= ambangKepadatan.low) {
-      kepadatanStatus = "Rendah";
-      kepadatanEmoji = "🟢";
-    } else if (vmCount <= ambangKepadatan.medium) {
-      kepadatanStatus = "Medium";
-      kepadatanEmoji = "🟡";
+    let statusEmoji = "✅";
+    // PERBAIKAN BAHASA 2: Menggunakan istilah Bahasa Indonesia
+    let statusText = lokasi.skor.status;
+    if (statusText === "Pilihan Baik") {
+        statusEmoji = "🟡";
+        statusText = "Pilihan Baik";
+    }
+    if (statusText === "Pilihan Kompromi") {
+        statusEmoji = "⚠️";
+        statusText = "Pilihan Kompromi";
+    }
+    if (isRiskRecommendation) {
+        statusEmoji = "🔴";
+        statusText = "Pilihan Kompromi";
     }
 
-    let bebanEmoji = "✅";
-    if (lokasi.detail.clusterLoadStatus === "Waspada") bebanEmoji = "⚠️";
-    if (lokasi.detail.clusterLoadStatus === "Kritis") bebanEmoji = "🔥";
+    pesan += `\n<b>${index + 1}. Cluster: <code>${lokasi.clusterName}</code></b>\n`;
+    pesan += `   └ Datastore: <code>${lokasi.dsName}</code>\n\n`;
 
-    pesan += `\n<b>${index + 1}. ${lokasi.vcenter} > Cluster: <code>${lokasi.clusterName}</code></b>\n`;
-    pesan += `   • <b>Datastore:</b> <code>${lokasi.dsName}</code>\n`;
-    pesan += `   • <b>Skor Kelayakan: ${lokasi.skor.total}/100</b> (Status: <b>${lokasi.skor.status}</b>)\n`;
-    pesan += `     └ 📊 <b>Provisioning DS:</b> ${lokasi.detail.dsUsagePercent.toFixed(1)}% (<code>${(
-      dsDetails?.provisionedGb || 0
-    ).toFixed(0)} GB / ${(dsDetails?.capacityGb || 0).toFixed(0)} GB</code>)\n`;
-    pesan += `     └ ${bebanEmoji} <b>Beban CPU Cluster:</b> ${lokasi.detail.clusterCpuUtil.toFixed(
-      1
-    )}% (Rasio: ${cpuRatio})\n`;
-    pesan += `     └ ${bebanEmoji} <b>Beban Memori Cluster:</b> ${lokasi.detail.clusterMemUtil.toFixed(
-      1
-    )}% (Rasio: ${memRatio})\n`;
-    pesan += `     └ ${kepadatanEmoji} <b>Kepadatan VM di DS:</b> ${vmCount} VM (Status: ${kepadatanStatus})\n`;
-    pesan += `   • <i>Alasan: ${lokasi.alasan}</i>\n`;
+    pesan += `   ${statusEmoji} <b>${statusText} (Skor: ${lokasi.skor.total}/100)</b>\n\n`;
 
-    if (isRiskRecommendation && lokasi.reason) {
-      pesan += `   • ⚠️ <b>PERINGATAN RISIKO:</b> ${lokasi.reason}\n`;
+    // PERTAHANKAN FORMAT 4: Key Metrics & Analysis dalam Bahasa Inggris
+    pesan += `   <b>Key Metrics:</b>\n`;
+    pesan += `   • Cluster CPU Load: <code>${lokasi.detail.clusterCpuUtil.toFixed(1)}%</code>\n`;
+    pesan += `   • Cluster Memory Load: <code>${lokasi.detail.clusterMemUtil.toFixed(1)}%</code>\n`;
+    pesan += `   • Datastore Provisioned: <code>${lokasi.detail.dsUsagePercent.toFixed(1)}%</code>\n`;
+    pesan += `   • VM Count in Datastore: <code>${vmCount} VM</code>\n\n`;
+
+    pesan += `   <b>Analysis & Context:</b>\n`;
+    if (isRiskRecommendation) {
+        pesan += `   • <i>Opsi darurat karena akan <b>${getReasonText(lokasi).toLowerCase()}</b>. Lanjutkan dengan hati-hati.</i>\n`;
+    } else if (lokasi.skor.status === "Pilihan Kompromi") {
+        pesan += `   • <i>Dapat digunakan, namun perhatikan ${lokasi.detail.penalties.join(', ')}.</i>\n`;
+    } else if (lokasi.skor.status === "Pilihan Baik") {
+        pesan += `   • <i>Pilihan yang solid dengan keseimbangan yang baik antara kapasitas dan beban kerja.</i>\n`;
+    } else {
+        pesan += `   • <i>Lokasi terbaik dengan beban rendah dan kapasitas lega untuk pertumbuhan.</i>\n`;
     }
+
+    pesan += `   • <i>CPU Overcommit Policy: ${cpuRatio}</i>\n`;
+    pesan += `   • <i>Memory Overcommit Policy: ${memRatio}</i>\n`;
   });
 
   if (rejected && rejected.length > 0) {
-    pesan += `\n<i>Catatan: Cluster berikut dievaluasi namun diabaikan karena tidak memenuhi syarat: ${rejected
-      .map((c) => `<code>${c.cluster}</code>`)
-      .join(", ")}.</i>`;
+    pesan += `\n<i>(Info: ${rejected.length} cluster lain diabaikan karena tidak memenuhi syarat)</i>`;
   }
-  pesan += `\n\n<i>*Perhitungan alokasi <b>tidak termasuk</b> VM 'Power Off' atau bernama 'unused'.</i>`;
   return pesan;
 }
 
